@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+
+
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/contentMain"
     android:orientation="vertical" android:layout_width="match_parent"
     android:layout_height="wrap_content"
 
     >
+
+
+    <fragment
+        android:name="com.google.android.gms.maps.MapFragment"
+        android:layout_width="fill_parent"
+        android:layout_height="300dp"
+        android:id="@+id/mapFragment"
+        tools:layout="@layout/abc_action_bar_title_item" />
+
 </LinearLayout>

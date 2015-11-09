@@ -3,6 +3,7 @@ package com.loera.nomad;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.location.Location;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
@@ -25,20 +26,39 @@ import com.google.android.gms.location.GeofencingRequest;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.CircleOptions;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 
+import java.io.File;
 import java.util.LinkedList;
+import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback,SongChooser.SongListener{
+
+    static boolean TEST_MODE = false;
 
     GoogleApiClient playServices;
-    LinkedList<Geofence> geofences;
+    LinkedList<MusicSpot> musicSpots;
     LocationRequest locationRequest;
     Location currentLocation;
     Context context;
     PendingIntent mGeofencePendingIntent;
     public static boolean occupied;
     private final String TAG = "Main Activity";
+    MapFragment map;
+    GoogleMap googleMap;
+    Marker currentMarker;
+    LatLng currentLatLng;
 
+    List<CircleOptions> circles;
+
+    final int GEOFENCE_RADIUS = 45;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,12 +66,19 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
+
+        map = (MapFragment) getFragmentManager().findFragmentById(R.id.mapFragment);
+        map.getMapAsync(this);
+
+
+
         occupied = false;
         context = this;
 
-        geofences = new LinkedList<>();
-
+        musicSpots = new LinkedList<>();
+        circles = new LinkedList<>();
         createLocationRequest();
+
         buildGoogleApiClient();
         setupButtons();
 
@@ -67,17 +94,17 @@ public class MainActivity extends AppCompatActivity {
         TextView text = new TextView(context);
         text.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        text.setText("Geofence added at:\n" +
-                "Latitude: " + currentLocation.getLatitude() + "\n" +
-                "Longitude: " + currentLocation.getLongitude());
+        text.setText("Geofence added with song: " + musicSpots.getLast().getSongName());
         layout.addView(text);
 
     }
 
-    public Geofence getCurrentGeofence() {
+    public Geofence getCurrentGeofence(Location currentLocation) {
 
         return new Geofence.Builder()
-                .setRequestId("TEST").setCircularRegion(currentLocation.getLatitude(), currentLocation.getLongitude(), 10.0f).setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .setRequestId(currentLocation.getLatitude()+","+currentLocation.getLongitude())
+                .setCircularRegion(currentLocation.getLatitude(), currentLocation.getLongitude(), GEOFENCE_RADIUS)
+                .setExpirationDuration(Geofence.NEVER_EXPIRE)
                 .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER | Geofence.GEOFENCE_TRANSITION_EXIT).build();
 
     }
@@ -93,17 +120,45 @@ public class MainActivity extends AppCompatActivity {
 
     public void startLocationUpdates() {
 
+
+
         LocationServices.FusedLocationApi.requestLocationUpdates(playServices, locationRequest, new LocationListener() {
             @Override
             public void onLocationChanged(Location location) {
 
+                boolean zoomCamera = false;
+                if (currentLocation == null)
+                    zoomCamera = true;
+
                 currentLocation = location;
+                currentLatLng = new LatLng(location.getLatitude(), location.getLongitude());
+
+                MarkerOptions marker = new MarkerOptions()
+                        .position(currentLatLng);
+
+                googleMap.clear();
+                addCircles();
+                googleMap.addMarker(marker);
+
+                if (zoomCamera)
+                    googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 14.0f));
+
+                Log.i(TAG, "Location updated, Marker updated");
 
             }
         });
     }
 
-    public void addGeofence(Geofence g) {
+    public void addCircles(){
+
+        for(CircleOptions c:circles)
+            googleMap.addCircle(c);
+
+    }
+
+    public void addMusicSpot(Geofence g) {
+
+        addCircleAroundCurrentPosition();
 
         LocationServices.GeofencingApi.addGeofences(
                 playServices,
@@ -123,6 +178,33 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+    }
+
+    public void getSong(){
+
+       SongChooser chooser = new SongChooser();
+        chooser.show(getFragmentManager(),"TEST");
+
+    }
+
+    public void addCircleAroundCurrentPosition(){
+
+
+
+        String fillString = "#9D45BA";
+        String strokeString = "#5358DB";
+
+
+        CircleOptions circle = new CircleOptions().center(currentLatLng)
+                .radius(GEOFENCE_RADIUS).fillColor(Color.parseColor(fillString))
+                .strokeColor(Color.parseColor(strokeString))
+                .strokeWidth(8.0f);
+
+        googleMap.addCircle(circle);
+        circles.add(circle);
+
+
+        Log.i(TAG, "Circle added around current position");
     }
 
     protected synchronized void buildGoogleApiClient() {
@@ -162,10 +244,11 @@ public class MainActivity extends AppCompatActivity {
         if (mGeofencePendingIntent != null) {
             return mGeofencePendingIntent;
         }
-        Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
+       // Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
+        Intent intent = new Intent("com.aol.android.geofence.ACTION_RECEIVE_GEOFENCE");
         // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
         // calling addGeofences() and removeGeofences().
-        return PendingIntent.getService(this, 0, intent, PendingIntent.
+        return PendingIntent.getBroadcast(this, 0, intent, PendingIntent.
                 FLAG_UPDATE_CURRENT);
     }
 
@@ -177,10 +260,7 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View view) {
                 if (currentLocation != null) {
                     if (!occupied) {
-                        updateUI();
-                        addGeofence(getCurrentGeofence());
-                        occupied = true;
-
+                        getSong();
                     } else {
 
                         Snackbar.make(view, "Current Position Occupied", Snackbar.LENGTH_LONG).show();
@@ -205,17 +285,44 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onSuccess(Status status) {
 
-                Log.i(TAG, "Removed geofences");
+                Log.i(TAG, "Removed Geofences");
 
             }
 
             @Override
             public void onUnresolvableFailure(Status status) {
-                Log.i(TAG, "Could not remove geofences, error: " + status.toString());
+                Log.i(TAG, "Could not remove Geofences, error: " + status.toString());
             }
         }); // Result processed in onResult().
     }
 
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+        googleMap.setBuildingsEnabled(false);
+        googleMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
+            @Override
+            public void onMapLongClick(LatLng latLng) {
+
+            }
+        });
+
+        this.googleMap = googleMap;
+
+
+
+    }
+
+    @Override
+    public void onRecieveSong(File song) {
+
+        musicSpots.add(new MusicSpot(song.getName(),song,currentLatLng));
+        addMusicSpot(getCurrentGeofence(currentLocation));
+        occupied = true;
+        updateUI();
+
+    }
 }
 
 
