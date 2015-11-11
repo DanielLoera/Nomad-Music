@@ -1,20 +1,103 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/contentMain"
-    android:orientation="vertical" android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:id="@+id/contentMain" android:layout_width="match_parent"
+    android:layout_height="match_parent"
 
     >
 
-
+<FrameLayout
+    android:layout_width="match_parent"
+    android:layout_height="300dp"
+    android:layout_alignParentTop="true"
+    android:layout_alignParentLeft="true"
+    android:id="@+id/mapLayout"
+    >
     <fragment
         android:name="com.google.android.gms.maps.MapFragment"
-        android:layout_width="fill_parent"
-        android:layout_height="300dp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:id="@+id/mapFragment"
         tools:layout="@layout/abc_action_bar_title_item" />
+</FrameLayout>
+    <RelativeLayout
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:id="@+id/player"
+        android:visibility="invisible"
+        >
 
-</LinearLayout>
+        <TextView
+            android:id="@+id/bottomBar"
+            android:layout_width="fill_parent"
+            android:layout_height="70dp"
+            android:background="@color/material_deep_teal_500"
+
+            />
+        <ImageView
+            android:layout_width="fill_parent"
+            android:layout_height="280dp"
+            android:layout_below="@+id/bottomBar"
+            android:src="@color/material_blue_grey_950"
+            android:id="@+id/albumArt"
+            />
+        <TextView
+            android:layout_below="@+id/albumArt"
+            android:layout_width="fill_parent"
+            android:layout_height="105dp"
+            android:id="@+id/infoBG"
+            android:background="@color/material_blue_grey_800"
+            />
+        <TextView
+            android:layout_below="@+id/infoBG"
+            android:layout_width="fill_parent"
+            android:layout_height="55dp"
+            android:id="@+id/controlsBG"
+            android:background="@color/material_deep_teal_200"
+            />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="28sp"
+            android:text="SONG"
+            android:layout_below="@+id/albumArt"
+            android:padding="10dp"
+            android:textColor="#FFFFFF"
+            android:id="@+id/songText"
+            />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/songText"
+            android:textSize="20sp"
+            android:text="ARTIST - ALBUM"
+            android:textColor="#FFFFFF"
+            android:padding="5dp"
+            android:id="@+id/artsitAlbumText"
+            />
+
+        <ImageButton
+            android:contentDescription="playPauselol"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_play_dark"
+            android:scaleType="fitXY"
+            android:layout_alignTop="@+id/controlsBG"
+            android:layout_centerHorizontal="true"
+            android:padding="10dp"
+            android:id="@+id/play_pause"
+            android:onClick="playOrPause"
+            android:background="#000000"
+            />
+
+
+
+    </RelativeLayout>
+
+
+
+
+
+</RelativeLayout>
+

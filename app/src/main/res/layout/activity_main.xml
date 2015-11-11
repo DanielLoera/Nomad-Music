@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<android.support.v4.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_height="match_parent"
+    android:layout_width="match_parent"
+    android:id="@+id/homeDrawerLayout"
+    >
+
+    <FrameLayout
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:id="@+id/contentFrame"
+        >
+
 <android.support.design.widget.CoordinatorLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -18,11 +31,32 @@
     <include layout="@layout/content_main"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="?attr/actionBarSize"/>
+        android:layout_marginTop="?attr/actionBarSize"
+        />
 
     <android.support.design.widget.FloatingActionButton android:id="@+id/fab"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end" android:layout_margin="@dimen/fab_margin"
-        android:src="@android:drawable/ic_dialog_email" />
+        android:layout_gravity="bottom|end" android:layout_marginBottom="100dp" android:layout_marginRight="20dp"
+        android:src="@android:drawable/ic_menu_mapmode"
+
+        />
+
 
 </android.support.design.widget.CoordinatorLayout>
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/homeDrawer"
+        android:layout_width="300dp"
+        android:layout_height="fill_parent"
+        android:layout_gravity= "start"
+        android:choiceMode="singleChoice"
+
+        android:divider="@android:color/transparent"
+        android:dividerHeight="0dp"
+        android:background="#ffffff"
+        android:orientation="vertical" />
+
+
+</android.support.v4.widget.DrawerLayout>
