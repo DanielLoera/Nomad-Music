@@ -8,10 +8,16 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Point;
+import android.graphics.drawable.ColorDrawable;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.media.AudioManager;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -27,6 +33,7 @@ import android.util.Log;
 import android.view.Display;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
@@ -103,6 +110,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     static boolean slidePlayer = false;
     static boolean addingGeofence = false;
     static boolean UISetup = false;
+    static boolean followGps = false;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,7 +118,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         new LogWriter().execute();
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        getSupportActionBar().setElevation(0);
         context = this;
         setupDrawer();
         if(savedInstanceState == null){
@@ -153,7 +160,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onWindowFocusChanged(hasFocus);
         if(!UISetup){
             UISetup = true;
-            setupPlayerUI();
+            setupUI();
         }
     }
 
@@ -213,15 +220,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return list;
     }
 
-
-    public void setupPlayerUI(){
+    public void setupUI(){
 
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
 
         final RelativeLayout player = (RelativeLayout) findViewById(R.id.player);
 
         FrameLayout map = (FrameLayout) findViewById(R.id.mapLayout);
-
         Display display = getWindowManager().getDefaultDisplay();
         final Point point = new Point();
         display.getSize(point);
@@ -279,7 +284,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public boolean onTouch(View v, MotionEvent event) {
                 float currentY = event.getRawY();
 
-
                 if (event.getAction() == MotionEvent.ACTION_DOWN && !slidePlayer) {
                     slidePlayer = true;
                     touchY = (int) event.getY();
@@ -326,18 +330,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void animateButtonsOnExpand(){
 
         ImageButton barButton = (ImageButton)findViewById(R.id.bar_play_pause);
+        FloatingActionButton fab = (FloatingActionButton)findViewById(R.id.fab);
+
         float amountMoved = (float) (barButton.getLayoutParams().width * 1.5);
         if(expanded){
 
             ObjectAnimator moveRight = ObjectAnimator.ofFloat(barButton,"x",barButton.getX() + amountMoved);
             moveRight.setDuration(400);
             moveRight.start();
+            fab.hide();
 
         }else{
 
             ObjectAnimator moveRight = ObjectAnimator.ofFloat(barButton,"x",barButton.getX() - amountMoved);
             moveRight.setDuration(200);
             moveRight.start();
+            fab.show();
 
         }
 
@@ -403,8 +411,82 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    public void updateUI(MusicSpot m) {
+    public void updateLocationUI() {
 
+        TextView locationText = (TextView)findViewById(R.id.locationText);
+       //Not Used Yet.
+       // TextView claimedByText = (TextView)findViewById(R.id.claimedByText);
+
+        Geocoder geocoder = new Geocoder(context);
+        try{
+        List<Address> addresses = geocoder.getFromLocation(currentLocation.getLatitude(),currentLocation.getLongitude(),10);
+            if (addresses != null && addresses.size() > 0){
+                Address address = addresses.get(0);
+                locationText.setText(address.getAddressLine(0) + " " + address.getAddressLine(1));
+            }else{
+                locationText.setText("Unknown Location");
+            }
+        }catch (IOException e){
+
+            e.printStackTrace();
+
+        }
+
+
+
+    }
+
+    public void updatePlayerUI(){
+
+        TextView songName = (TextView)findViewById(R.id.songText);
+        TextView albumAndArtist = (TextView)findViewById(R.id.artsitAlbumText);
+        ImageView albumArt = (ImageView)findViewById(R.id.albumArt);
+
+        MediaMetadataRetriever metadataRetriever = new MediaMetadataRetriever();
+        metadataRetriever.setDataSource(musicSpots.get(occupied).getSongFile());
+        String songTitle = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
+
+        if(songTitle!=null)
+        songName.setText(songTitle);
+
+        String artist = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
+        String album = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
+
+        if(artist != null)
+            albumAndArtist.setText(artist + " - ");
+
+        if(album != null)
+            albumAndArtist.setText(albumAndArtist.getText()+album);
+
+        byte[] byteArt = metadataRetriever.getEmbeddedPicture();
+
+        if(byteArt!=null){
+            Bitmap art = BitmapFactory.decodeByteArray(byteArt, 0, byteArt.length);
+            int color = getAverageColor(art);
+            albumArt.setBackground(new ColorDrawable(color));
+            albumArt.setImageBitmap(art);
+        }
+    }
+
+    public int getAverageColor(Bitmap b){
+
+        long totalPixels = 0;
+        long red = 0;
+        long green = 0;
+        long blue = 0;
+
+        for(int y = 0;y<b.getHeight();y++){
+            for(int x = 0;x<b.getWidth();x++){
+                totalPixels++;
+                int color = b.getPixel(x,y);
+                red+= Color.red(color);
+                green+= Color.green(color);
+                blue+= Color.blue(color);
+            }
+
+        }
+
+        return Color.rgb((int)(red/totalPixels),(int)(green/totalPixels),(int)(blue/totalPixels));
 
     }
 
@@ -447,10 +529,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     addCircles();
                     googleMap.addMarker(marker);
 
-                    if(zoomCamera)
-                    googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 16.0f));
+                    if(followGps || zoomCamera)
+                    googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 18.0f));
 
                     Log.i(TAG, "Location updated, Marker updated");
+
+                    if(occupied.equals("none"))
+                    updateLocationUI();
 
                 }
             }
@@ -509,8 +594,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void getSong(){
         addingGeofence = true;
-       SongChooser chooser = new SongChooser();
-        chooser.show(getFragmentManager(), "TEST");
+        SongChooser chooser = new SongChooser();
+        chooser.show(getFragmentManager(), "Song Chooser");
 
     }
 
@@ -604,11 +689,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
 
-        ImageButton but = (ImageButton) findViewById(R.id.play_pause);
+        TextView infoBg = (TextView)findViewById(R.id.infoBG);
+        float floatingButY = ((infoBg.getLayoutParams().height - fab.getLayoutParams().height)) + infoBg.getY();
 
+        fab.setY(floatingButY);
+
+        ImageButton but = (ImageButton) findViewById(R.id.play_pause);
         but.getLayoutParams().height = imageButtonHeight;
         but.getLayoutParams().width = imageButtonHeight;
-
         but = (ImageButton) findViewById(R.id.bar_play_pause);
         but.getLayoutParams().height = imageButtonHeight;
         but.getLayoutParams().width = imageButtonHeight;
@@ -639,10 +727,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     @Override
-    public void onMapReady(GoogleMap googleMap) {
-        googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+    public void onMapReady(final GoogleMap googleMap) {
+        googleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
         googleMap.setBuildingsEnabled(false);
-
         googleMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
             @Override
             public void onMapLongClick(LatLng latLng) {
@@ -652,10 +739,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 currentLocation.setLatitude(latLng.latitude);
                 currentLocation.setLongitude(latLng.longitude);
                 getSong();
+
+
             }
         });
-
-        this.googleMap = googleMap;
+       this.googleMap = googleMap;
 
 
 
@@ -663,29 +751,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     public void onRecieveSong(File song) {
-
         names.add(song.getName());
         MusicSpot m = new MusicSpot(song.getName(),song.getAbsolutePath(),currentLatLng.latitude,currentLatLng.longitude);
         musicSpots.put(m.getSongName(), m);
         addMusicSpots(getCurrentGeofence(currentLocation, m.getSongName()));
         addCircleAroundCurrentPosition(m.getSongName());
         occupied = m.getSongName();
-        updateUI(m);
-
+        updateLocationUI();
         addingGeofence = false;
-
     }
 
     @Override
     public void noSelectionMade() {
         addingGeofence = false;
     }
+
     public void playOrPause(View v){
 
         Log.i(TAG, "play or pause");
 
 
-        if(musicPlayer!= null && occupied != null){
+        if(musicPlayer!= null && !occupied.equals("none")){
 
             if(!musicPlayer.isPlaying()){
                 musicPlayer.start();
@@ -699,12 +785,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             createPlayerFromSpot(musicSpots.get(occupied));
 
+        }else if(occupied.equals("none"))
+        {
+
+            Snackbar.make(v,"Go find a Music Spot to play some jams!",Snackbar.LENGTH_LONG).show();
+
         }
     }
 
     public void createPlayerFromSpot(MusicSpot m){
 
-     ;
+
         musicPlayer = new MediaPlayer();
         musicPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
@@ -824,6 +915,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 replaceSongWith(spot);
             }
 
+            updatePlayerUI();
 
         }
 
@@ -840,10 +932,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
+    public boolean onCreateOptionsMenu(Menu menu){
+
+        getMenuInflater().inflate(R.menu.menu_main,menu);
+     return true;
+    }
+
     public boolean onOptionsItemSelected(MenuItem item){
 
         if (toggle.onOptionsItemSelected(item)) {
             return true;
+        }else if(item.getItemId() == R.id.gpsAction && currentLatLng != null){
+
+            googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng ,18.0f));
+            followGps = !followGps;
+
+            String followOrNot = followGps ? "following" : "not following";
+
+
+            Snackbar.make(findViewById(R.id.fab)
+                    ,"Map " + followOrNot + " your location",
+                    Snackbar.LENGTH_SHORT).show();
+
         }
 
         return super.onOptionsItemSelected(item);

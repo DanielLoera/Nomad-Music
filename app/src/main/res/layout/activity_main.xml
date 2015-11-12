@@ -39,7 +39,8 @@
     <android.support.design.widget.FloatingActionButton android:id="@+id/fab"
         android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="bottom|end" android:layout_marginBottom="100dp" android:layout_marginRight="20dp"
-        android:src="@android:drawable/ic_menu_mapmode"
+        android:src="@drawable/ic_plus"
+        android:scaleType="fitXY"
 
         />
 

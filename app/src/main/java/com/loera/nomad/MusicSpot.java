@@ -14,6 +14,7 @@ public class MusicSpot implements Parcelable {
 
     private String songName;
     private String songFile;
+    private String user;
     private Double latt;
     private Double longi;
 
@@ -35,16 +36,13 @@ public class MusicSpot implements Parcelable {
     public LatLng getLatLng(){
         return new LatLng(latt,longi);
     }
-
-    public String getId(){
-
-        return songName;
-
-    }
+    public String getId(){return songName;}
+    public String getUser(){return user;}
 
     protected MusicSpot(Parcel in) {
         songName = in.readString();
         songFile = in.readString();
+        user = in.readString();
         latt = in.readByte() == 0x00 ? null : in.readDouble();
         longi = in.readByte() == 0x00 ? null : in.readDouble();
     }
@@ -58,6 +56,7 @@ public class MusicSpot implements Parcelable {
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeString(songName);
         dest.writeString(songFile);
+        dest.writeString(user);
         if (latt == null) {
             dest.writeByte((byte) (0x00));
         } else {
