@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/contentMain" android:layout_width="match_parent"
     android:layout_height="match_parent"
-
+    android:background="@color/colorPrimary"
     >
 
 <FrameLayout
@@ -24,16 +24,52 @@
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
         android:id="@+id/player"
-        android:visibility="invisible"
+
         >
 
         <TextView
             android:id="@+id/bottomBar"
             android:layout_width="fill_parent"
             android:layout_height="70dp"
-            android:background="@color/material_deep_teal_500"
+            android:background="?attr/colorPrimary"
+            android:clickable="true"
 
             />
+
+        <ImageButton
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/bar_play_pause"
+            android:onClick="playOrPause"
+            android:src="@drawable/ic_play"
+            android:background="@color/colorPrimary"
+            android:layout_alignParentRight="true"
+
+
+            />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/locationText"
+            android:textColor="#FFFFFF"
+            android:text="TEST"
+            android:paddingLeft="@dimen/padding_text_view"
+            android:paddingTop="@dimen/padding_text_view"
+            android:singleLine="true"
+            android:textSize="20sp"
+            />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/claimedByText"
+                android:textColor="#FFFFFF"
+                android:layout_below="@+id/locationText"
+                android:text="Claimed By"
+                android:paddingLeft="@dimen/padding_text_view"
+                android:paddingBottom="@dimen/padding_text_view"
+                />
         <ImageView
             android:layout_width="fill_parent"
             android:layout_height="280dp"
@@ -46,15 +82,9 @@
             android:layout_width="fill_parent"
             android:layout_height="105dp"
             android:id="@+id/infoBG"
-            android:background="@color/material_blue_grey_800"
+            android:background="?attr/colorPrimaryDark"
             />
-        <TextView
-            android:layout_below="@+id/infoBG"
-            android:layout_width="fill_parent"
-            android:layout_height="55dp"
-            android:id="@+id/controlsBG"
-            android:background="@color/material_deep_teal_200"
-            />
+
 
         <TextView
             android:layout_width="wrap_content"
@@ -75,22 +105,31 @@
             android:textColor="#FFFFFF"
             android:padding="5dp"
             android:id="@+id/artsitAlbumText"
+            android:paddingLeft="@dimen/padding_text_view"
             />
+
+        <RelativeLayout
+            android:layout_width="fill_parent"
+            android:layout_height="55dp"
+            android:layout_below="@+id/infoBG"
+            android:id="@+id/controlsLayout"
+            android:background="@color/colorPrimary"
+            >
 
         <ImageButton
             android:contentDescription="playPauselol"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:src="@drawable/ic_play_dark"
+            android:src="@drawable/ic_play"
             android:scaleType="fitXY"
-            android:layout_alignTop="@+id/controlsBG"
             android:layout_centerHorizontal="true"
-            android:padding="10dp"
             android:id="@+id/play_pause"
             android:onClick="playOrPause"
-            android:background="#000000"
+            android:background="?attr/colorPrimary"
+            android:layout_centerInParent="true"
+            android:layout_centerVertical="true"
             />
-
+        </RelativeLayout>
 
 
     </RelativeLayout>

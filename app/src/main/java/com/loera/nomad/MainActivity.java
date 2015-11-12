@@ -28,13 +28,12 @@ import android.view.Display;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -96,11 +95,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     GeofenceReciever reciever;
 
     MediaPlayer musicPlayer;
-
+    static int touchY;
+    static long touchTime;
     ActionBarDrawerToggle toggle;
 
     static boolean expanded = false;
+    static boolean slidePlayer = false;
     static boolean addingGeofence = false;
+    static boolean UISetup = false;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -108,10 +110,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         new LogWriter().execute();
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        setupDrawer();
-        setupButtons();
-
+        getSupportActionBar().setElevation(0);
         context = this;
+        setupDrawer();
         if(savedInstanceState == null){
         musicSpots = new HashMap<>();
         circles = new LinkedList<>();
@@ -150,7 +151,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        setupPlayerUI();
+        if(!UISetup){
+            UISetup = true;
+            setupPlayerUI();
+        }
     }
 
     public void monitorPreviousGeofences(ArrayList<String> list){
@@ -215,12 +219,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
 
         final RelativeLayout player = (RelativeLayout) findViewById(R.id.player);
+
         FrameLayout map = (FrameLayout) findViewById(R.id.mapLayout);
+
         Display display = getWindowManager().getDefaultDisplay();
         final Point point = new Point();
         display.getSize(point);
         Resources resources = context.getResources();
         int resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android");
+
         float navigationBarHeight;
         if (resourceId > 0) {
             navigationBarHeight = resources.getDimensionPixelSize(resourceId);
@@ -243,16 +250,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         setScaledHeight(text,width,height,43,480);
         text = (TextView)findViewById(R.id.artsitAlbumText);
         setScaledHeight(text,width,height,37,640);
-        text = (TextView)findViewById(R.id.controlsBG);
+        RelativeLayout controls = (RelativeLayout)findViewById(R.id.controlsLayout);
+        controls.getLayoutParams().height = (int)(height - player.getLayoutParams().height) - controls.getLayoutParams().height;
+        float buttonHeight =  (height - controls.getY())/2;
+        setupButtons((int)buttonHeight/2);
+        text = (TextView) findViewById(R.id.bottomBar);
         if(!(hasBackKey && hasHomeKey))
         setScaledHeight(text,width,height,11,128);
         else
             setScaledHeight(text,width,height,67,640);
-        text = (TextView) findViewById(R.id.bottomBar);
-        if(!(hasBackKey && hasHomeKey))
-        setScaledHeight(text,width,height,7,64);
-        else
-            setScaledHeight(text,width,height,41,320);
         ImageView image = (ImageView)findViewById(R.id.albumArt);
         if(!(hasBackKey && hasHomeKey))
         image.getLayoutParams().height = (int)(height*7/16);
@@ -268,31 +274,83 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         player.setY(closedPlayerY);
         player.setX(0);
 
-
-        text.setOnClickListener(new View.OnClickListener() {
+        text.setOnTouchListener(new View.OnTouchListener() {
             @Override
-            public void onClick(View v) {
-                if (!expanded) {
+            public boolean onTouch(View v, MotionEvent event) {
+                float currentY = event.getRawY();
 
-                    ObjectAnimator up = ObjectAnimator.ofFloat(player,"y",0f);
-                    up.setDuration(500);
-                    up.start();
 
-                    expanded = true;
+                if (event.getAction() == MotionEvent.ACTION_DOWN && !slidePlayer) {
+                    slidePlayer = true;
+                    touchY = (int) event.getY();
+                    touchTime = System.currentTimeMillis();
+                } else if (event.getAction() == MotionEvent.ACTION_MOVE && slidePlayer) {
+                    currentY = currentY - bottomBarSize - touchY;
+                    if (currentY > 0 && currentY < closedPlayerY)
+                        player.setY(currentY);
+                } else if (event.getAction() == MotionEvent.ACTION_UP && slidePlayer) {
 
-                } else {
+                    float finalY = expanded ? closedPlayerY : 0;
 
-                    ObjectAnimator down  = ObjectAnimator.ofFloat(player,"y",closedPlayerY);
-                    down.setDuration(500);
-                    down.start();
+                    float beginY = finalY == 0 ? closedPlayerY : 0;
 
-                    expanded = false;
+                    float speed = getSpeedOfSwipe(touchTime, System.currentTimeMillis(), beginY, currentY, closedPlayerY);
+
+                    if (speed > 200) {
+                        speed = 200;
+                    }
+
+                    Log.i(TAG,"Speed is " + speed);
+
+                    ObjectAnimator animator = ObjectAnimator.ofFloat(player, "y", finalY);
+                    animator.setDuration((long) speed);
+                    animator.start();
+
+                    expanded = !expanded;
+
+                   animateButtonsOnExpand();
+
+                    if (!expanded && currentLatLng != null)
+                        googleMap.animateCamera(CameraUpdateFactory.newLatLng(currentLatLng));
+
+                    slidePlayer = false;
                 }
+
+                return false;
             }
         });
 
-
         player.setVisibility(View.VISIBLE);
+    }
+
+    public void animateButtonsOnExpand(){
+
+        ImageButton barButton = (ImageButton)findViewById(R.id.bar_play_pause);
+        float amountMoved = (float) (barButton.getLayoutParams().width * 1.5);
+        if(expanded){
+
+            ObjectAnimator moveRight = ObjectAnimator.ofFloat(barButton,"x",barButton.getX() + amountMoved);
+            moveRight.setDuration(400);
+            moveRight.start();
+
+        }else{
+
+            ObjectAnimator moveRight = ObjectAnimator.ofFloat(barButton,"x",barButton.getX() - amountMoved);
+            moveRight.setDuration(200);
+            moveRight.start();
+
+        }
+
+    }
+
+    public float getSpeedOfSwipe(long touchTime,long currentTime, float firstTouch,float secondTouch,float sizeOfBox){
+
+        float slope = ((currentTime-touchTime)/(secondTouch-firstTouch));
+
+        float distanceLeft = sizeOfBox - secondTouch;
+
+        return Math.abs(slope * distanceLeft);
+
     }
 
     public void setScaledHeight(TextView text,float width,float height, double numerator,double denominator){
@@ -300,7 +358,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         text.getLayoutParams().height = (int)(height*numerator/denominator);
 
     }
-
 
     public void setupDrawer(){
 
@@ -336,8 +393,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-
     public void onDestroy() {
+        unregisterReceiver(reciever);
         super.onDestroy();
         if(musicPlayer!=null){
         musicPlayer.stop();
@@ -348,13 +405,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void updateUI(MusicSpot m) {
 
-        RelativeLayout layout = (RelativeLayout) findViewById(R.id.contentMain);
-
-        TextView text = new TextView(context);
-        text.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        text.setText("Geofence added with song: " + m.getSongName());
-        layout.addView(text);
 
     }
 
@@ -384,9 +434,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void onLocationChanged(Location location) {
 
                 if (!addingGeofence) {
-                    boolean zoomCamera = false;
-                    if (currentLocation == null)
-                        zoomCamera = true;
+
+                    boolean zoomCamera = currentLocation == null;
 
                     currentLocation = location;
                     currentLatLng = new LatLng(location.getLatitude(), location.getLongitude());
@@ -398,8 +447,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     addCircles();
                     googleMap.addMarker(marker);
 
-                    if (zoomCamera)
-                        googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 14.0f));
+                    if(zoomCamera)
+                    googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 16.0f));
 
                     Log.i(TAG, "Location updated, Marker updated");
 
@@ -536,7 +585,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 FLAG_UPDATE_CURRENT);
     }
 
-    public void setupButtons() {
+    public void setupButtons(int imageButtonHeight) {
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -554,6 +603,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     Snackbar.make(view, "Waiting on location...", Snackbar.LENGTH_LONG).show();
             }
         });
+
+        ImageButton but = (ImageButton) findViewById(R.id.play_pause);
+
+        but.getLayoutParams().height = imageButtonHeight;
+        but.getLayoutParams().width = imageButtonHeight;
+
+        but = (ImageButton) findViewById(R.id.bar_play_pause);
+        but.getLayoutParams().height = imageButtonHeight;
+        but.getLayoutParams().width = imageButtonHeight;
+        but.setY(but.getY() + (imageButtonHeight / 4));
+        but.setX(but.getX() - (imageButtonHeight / 4));
 
     }
 
@@ -582,11 +642,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(GoogleMap googleMap) {
         googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
         googleMap.setBuildingsEnabled(false);
-        googleMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+
+        googleMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
             @Override
-            public void onMapClick(LatLng latLng) {
-                if(!expanded)
-                    this.onMapClick(latLng);
+            public void onMapLongClick(LatLng latLng) {
+                addingGeofence = true;
+                currentLatLng = latLng;
+                currentLocation = new Location("Nomad");
+                currentLocation.setLatitude(latLng.latitude);
+                currentLocation.setLongitude(latLng.longitude);
+                getSong();
             }
         });
 
@@ -617,19 +682,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
     public void playOrPause(View v){
 
-        Log.i(TAG,"play or pause");
+        Log.i(TAG, "play or pause");
 
-        ImageButton fab  = (ImageButton)v;
 
         if(musicPlayer!= null && occupied != null){
 
             if(!musicPlayer.isPlaying()){
-            musicPlayer.start();
-                fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_pause_dark));
+                musicPlayer.start();
+                setPlayOrPauseIcons("pause");
             }else{
-
                 musicPlayer.pause();
-                fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_play_dark));
+                setPlayOrPauseIcons("play");
             }
 
         }else if( musicPlayer == null && !occupied.equals("none")){
@@ -641,25 +704,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void createPlayerFromSpot(MusicSpot m){
 
-        final ImageButton fab  = (ImageButton) findViewById(R.id.play_pause);
+     ;
         musicPlayer = new MediaPlayer();
         musicPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-
-                fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_play_dark));
+                setPlayOrPauseIcons("play");
             }
         });
         musicPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
         try{
         musicPlayer.setDataSource(m.getSongFile());
-            fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_pause_dark));
+            setPlayOrPauseIcons("pause");
             musicPlayer.prepare();
             musicPlayer.start();
             musicPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
         }catch(IOException e){
             e.printStackTrace();
         }
+
+    }
+
+    public void setPlayOrPauseIcons(String state){
+        final ImageButton fab  = (ImageButton) findViewById(R.id.play_pause);
+        final ImageButton fab2 = (ImageButton) findViewById(R.id.bar_play_pause);
+
+        if(state.equals("play")){
+        fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_play));
+        fab2.setImageDrawable(getResources().getDrawable(R.drawable.ic_play));
+        }else{
+            fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_pause));
+            fab2.setImageDrawable(getResources().getDrawable(R.drawable.ic_pause));
+        }
+
 
     }
 
@@ -681,7 +758,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        Log.i(TAG,"LOL");
+        Log.i(TAG, "LOL");
     }
 
 
@@ -743,7 +820,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             if(musicPlayer==null){
                 createPlayerFromSpot(spot);
-            }else if(!musicPlayer.isPlaying()){
+            }else if(musicPlayer.isPlaying()){
                 replaceSongWith(spot);
             }
 
