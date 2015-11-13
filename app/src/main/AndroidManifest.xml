@@ -14,14 +14,13 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme" >
 
-        <meta-data android:name="com.google.android.geo.API_KEY" android:value=""/>
+        <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyAajXrxK8Q1pVOZsCN7e4CzWbpMTgqYZkk"/>
 
 
 
         <receiver android:name="com.loera.nomad.MainActivity$GeofenceReciever"
             android:exported="false"
             >
-
         </receiver>
         <activity
             android:name=".MainActivity"

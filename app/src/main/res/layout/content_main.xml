@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/contentMain" android:layout_width="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/contentMain"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/colorPrimary"
-    >
+    android:background="@color/colorPrimary">
 
 <FrameLayout
     android:layout_width="match_parent"
@@ -91,30 +92,41 @@
 
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="fill_parent"
             android:layout_height="wrap_content"
+            android:gravity="left"
             android:textSize="28sp"
+            android:singleLine="true"
             android:ellipsize="marquee"
             android:marqueeRepeatLimit="marquee_forever"
             android:scrollHorizontally="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:freezesText="true"
             android:layout_below="@+id/albumArt"
             android:padding="10dp"
             android:textColor="#FFFFFF"
             android:id="@+id/songText"
             />
         <TextView
-            android:layout_width="wrap_content"
+            android:gravity="left"
+            android:layout_width="fill_parent"
             android:layout_height="wrap_content"
             android:layout_below="@+id/songText"
             android:textSize="20sp"
+            android:singleLine="true"
             android:ellipsize="marquee"
             android:marqueeRepeatLimit="marquee_forever"
             android:scrollHorizontally="true"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:freezesText="true"
             android:textColor="#FFFFFF"
             android:padding="5dp"
             android:id="@+id/artsitAlbumText"
             android:paddingLeft="@dimen/padding_text_view"
             />
+
 
         <RelativeLayout
             android:layout_width="fill_parent"
@@ -139,6 +151,19 @@
             />
         </RelativeLayout>
 
+        <org.adw.library.widgets.discreteseekbar.DiscreteSeekBar
+            android:visibility="invisible"
+            style="@style/Widget.DiscreteSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:dsb_min="0"
+            app:dsb_max="0"
+            app:dsb_value = "0"
+            app:dsb_progressColor ="@color/colorAccent"
+            app:dsb_indicatorColor = "@color/colorAccent"
+            app:dsb_trackColor = "@color/colorPrimaryDark"
+            android:id="@+id/musicSeekBar"
+            />
 
     </RelativeLayout>
 

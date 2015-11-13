@@ -1,6 +1,7 @@
 package com.loera.nomad;
 
 import android.animation.ObjectAnimator;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -28,6 +29,7 @@ import android.support.design.widget.Snackbar;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.app.NotificationCompat;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Display;
@@ -64,6 +66,8 @@ import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import org.adw.library.widgets.discreteseekbar.DiscreteSeekBar;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
@@ -95,6 +99,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     LatLng currentLatLng;
     Location currentLocation;
 
+    NotificationCompat.Builder notification;
+    NotificationManager notMgr;
+
     ArrayList<String> names;
     List<CircleOptions> circles;
     HashMap<String,MusicSpot> musicSpots;
@@ -105,6 +112,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     static int touchY;
     static long touchTime;
     ActionBarDrawerToggle toggle;
+
+    static String[] currentSong;
+
+    DiscreteSeekBar seekBar;
+    android.os.Handler seekUpdater;
+    Runnable secondCheck;
 
     static boolean expanded = false;
     static boolean slidePlayer = false;
@@ -119,6 +132,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         context = this;
+
+
         setupDrawer();
         if(savedInstanceState == null){
         musicSpots = new HashMap<>();
@@ -130,12 +145,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             occupied = savedInstanceState.getString("occupied");
             circles = getCirclesFromList(savedInstanceState.getStringArrayList("circles"));
             names = savedInstanceState.getStringArrayList("names");
+            UISetup = savedInstanceState.getBoolean("UISetup");
         }
 
         reciever = new GeofenceReciever();
         IntentFilter filter = new IntentFilter();
         filter.addAction("com.aol.android.geofence.ACTION_RECEIVE_GEOFENCE");
-        registerReceiver(reciever,filter);
+        filter.addAction("com.nomad.ACTION_NOTIFICATION_PRESS");
+        registerReceiver(reciever, filter);
 
         MapFragment map = (MapFragment) getFragmentManager().findFragmentById(R.id.mapFragment);
         map.getMapAsync(this);
@@ -153,6 +170,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         state.putString("occupied", occupied);
         state.putStringArrayList("circles", getCirclesArrayList());
         state.putStringArrayList("names", names);
+        state.putBoolean("UIsetup", UISetup);
 
     }
 
@@ -252,8 +270,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         else
             setScaledHeight(text,width,height,117,640);
         text = (TextView)findViewById(R.id.songText);
+        text.setSelected(true);
         setScaledHeight(text,width,height,43,480);
         text = (TextView)findViewById(R.id.artsitAlbumText);
+        text.setSelected(true);
         setScaledHeight(text,width,height,37,640);
         RelativeLayout controls = (RelativeLayout)findViewById(R.id.controlsLayout);
         controls.getLayoutParams().height = (int)(height - player.getLayoutParams().height) - controls.getLayoutParams().height;
@@ -304,7 +324,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         speed = 200;
                     }
 
-                    Log.i(TAG,"Speed is " + speed);
+                    Log.i(TAG, "Speed is " + speed);
 
                     ObjectAnimator animator = ObjectAnimator.ofFloat(player, "y", finalY);
                     animator.setDuration((long) speed);
@@ -312,7 +332,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     expanded = !expanded;
 
-                   animateButtonsOnExpand();
+                    animateButtonsOnExpand();
 
                     if (!expanded && currentLatLng != null)
                         googleMap.animateCamera(CameraUpdateFactory.newLatLng(currentLatLng));
@@ -324,7 +344,73 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
 
+        setupSeekBar();
+
         player.setVisibility(View.VISIBLE);
+    }
+
+    public void setupSeekBar(){
+
+        TextView text = (TextView)findViewById(R.id.infoBG);
+
+        float height = text.getLayoutParams().height;
+        float y = text.getY();
+
+        seekBar = (DiscreteSeekBar) findViewById(R.id.musicSeekBar);
+
+        float endOfView = y + height;
+
+        seekBar.setY(endOfView - seekBar.getHeight() / 4);
+        seekBar.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+
+                if(event.getAction() == MotionEvent.ACTION_DOWN){
+                    stopSeek();
+                }else if(event.getAction() == MotionEvent.ACTION_UP){
+
+                    int stoppedTime = seekBar.getProgress();
+
+                    musicPlayer.pause();
+                    musicPlayer.seekTo(stoppedTime);
+                    musicPlayer.start();
+                    setPlayOrPauseIcons("pause");
+                    updateNotification();
+                    startSeek(stoppedTime);
+
+                }
+
+
+
+                return false;
+            }
+        });
+
+    }
+
+    public void startSeek(final long initialSeekPosition){
+        seekBar.setProgress((int) initialSeekPosition);
+        seekBar.setMax(musicPlayer.getDuration());
+        seekBar.setVisibility(View.VISIBLE);
+        seekUpdater = new android.os.Handler();
+
+        final long startTime = System.currentTimeMillis();
+
+        secondCheck = new Runnable() {
+            @Override
+            public void run() {
+                seekBar.setProgress((int) (initialSeekPosition + (System.currentTimeMillis() - startTime)));
+                seekUpdater.postDelayed(secondCheck, 1000);
+            }
+        };
+
+        secondCheck.run();
+
+    }
+
+
+    void stopSeek() {
+        seekUpdater.removeCallbacks(secondCheck);
     }
 
     public void animateButtonsOnExpand(){
@@ -403,12 +489,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void onDestroy() {
         unregisterReceiver(reciever);
+        stopMusic();
         super.onDestroy();
+
+    }
+
+    public void stopMusic(){
+        if(notMgr!=null)
+        notMgr.cancelAll();
         if(musicPlayer!=null){
-        musicPlayer.stop();
-        musicPlayer.release();
-        musicPlayer = null;
+            musicPlayer.stop();
+            musicPlayer.release();
+            musicPlayer = null;
         }
+        setPlayOrPauseIcons("play");
     }
 
     public void updateLocationUI() {
@@ -422,7 +516,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         List<Address> addresses = geocoder.getFromLocation(currentLocation.getLatitude(),currentLocation.getLongitude(),10);
             if (addresses != null && addresses.size() > 0){
                 Address address = addresses.get(0);
-                locationText.setText(address.getAddressLine(0) + " " + address.getAddressLine(1));
+                locationText.setText(address.getAddressLine(0));
             }else{
                 locationText.setText("Unknown Location");
             }
@@ -438,6 +532,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void updatePlayerUI(){
 
+        currentSong = new String[]{"Unknown","Unknown","Unknown"};
+
         TextView songName = (TextView)findViewById(R.id.songText);
         TextView albumAndArtist = (TextView)findViewById(R.id.artsitAlbumText);
         ImageView albumArt = (ImageView)findViewById(R.id.albumArt);
@@ -446,17 +542,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         metadataRetriever.setDataSource(musicSpots.get(occupied).getSongFile());
         String songTitle = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
 
-        if(songTitle!=null)
-        songName.setText(songTitle);
+        if(songTitle!=null) {
+            songName.setText(songTitle);
+            currentSong[0] = songTitle;
+        }
 
         String artist = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
         String album = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
 
-        if(artist != null)
+        if(artist != null){
             albumAndArtist.setText(artist + " - ");
+            currentSong[1] = artist;
+        }
 
-        if(album != null)
+        if(album != null){
             albumAndArtist.setText(albumAndArtist.getText()+album);
+            currentSong[2] = album;
+        }
 
         byte[] byteArt = metadataRetriever.getEmbeddedPicture();
 
@@ -466,6 +568,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             albumArt.setBackground(new ColorDrawable(color));
             albumArt.setImageBitmap(art);
         }
+
     }
 
     public int getAverageColor(Bitmap b){
@@ -483,11 +586,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 green+= Color.green(color);
                 blue+= Color.blue(color);
             }
-
         }
-
-        return Color.rgb((int)(red/totalPixels),(int)(green/totalPixels),(int)(blue/totalPixels));
-
+        return Color.rgb((int) (red / totalPixels), (int) (green / totalPixels), (int) (blue / totalPixels));
     }
 
     public Geofence getCurrentGeofence(Location currentLocation,String name) {
@@ -529,13 +629,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     addCircles();
                     googleMap.addMarker(marker);
 
-                    if(followGps || zoomCamera)
-                    googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 18.0f));
+                    if (followGps || zoomCamera)
+                        googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 18.0f));
 
                     Log.i(TAG, "Location updated, Marker updated");
 
-                    if(occupied.equals("none"))
-                    updateLocationUI();
+                    if (occupied.equals("none"))
+                        updateLocationUI();
 
                 }
             }
@@ -776,11 +876,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if(!musicPlayer.isPlaying()){
                 musicPlayer.start();
                 setPlayOrPauseIcons("pause");
+                startSeek(seekBar.getProgress());
             }else{
                 musicPlayer.pause();
                 setPlayOrPauseIcons("play");
+                stopSeek();
             }
-
+                updateNotification();
         }else if( musicPlayer == null && !occupied.equals("none")){
 
             createPlayerFromSpot(musicSpots.get(occupied));
@@ -801,6 +903,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onCompletion(MediaPlayer mp) {
                 setPlayOrPauseIcons("play");
+                stopSeek();
+                seekBar.setProgress(0);
             }
         });
         musicPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
@@ -810,9 +914,49 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             musicPlayer.prepare();
             musicPlayer.start();
             musicPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+            startSeek(0);
         }catch(IOException e){
             e.printStackTrace();
         }
+    }
+
+    public void updateNotification(){
+
+        notification = new NotificationCompat.Builder(context);
+        notification.setOngoing(true);
+        notification.setSmallIcon(R.drawable.ic_headphones);
+
+        notification.setContentTitle(currentSong[0]);
+
+        notification.setContentText(currentSong[1] + " - " + currentSong[2]);
+
+        Intent playPauseIntent = new Intent();
+        playPauseIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
+        playPauseIntent.putExtra("button", "playOrPause");
+        PendingIntent playPausePend = PendingIntent.getBroadcast(context, 001, playPauseIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent stopIntent = new Intent();
+        stopIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
+        stopIntent.putExtra("button", "stop");
+        PendingIntent stopPend = PendingIntent.getBroadcast(context,002,stopIntent,PendingIntent.FLAG_UPDATE_CURRENT);
+
+        Intent launchAppIntent = new Intent(context,MainActivity.class);
+        launchAppIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent launchPend = PendingIntent.getActivity(context, 003, launchAppIntent, 0);
+
+
+
+        int playOrPauseIcon = (musicPlayer!=null && musicPlayer.isPlaying())? R.drawable.ic_pause : R.drawable.ic_play;
+        String playOrPauseText = playOrPauseIcon == R.drawable.ic_pause?"Pause":"Play";
+
+        notification.addAction(playOrPauseIcon,playOrPauseText,playPausePend);
+        notification.addAction(R.drawable.ic_stop,"Stop",stopPend);
+        notification.setContentIntent(launchPend);
+
+        notMgr = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+
+        notMgr.notify(001,notification.build());
 
     }
 
@@ -862,8 +1006,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         public void onReceive(Context context, Intent intent) {
             this.context = context;
+
+            String buttonPress = intent.getStringExtra("button");
+
             broadcastIntent.addCategory("EnterOrExit");
+            if(buttonPress == null)
             enterOrExit(intent);
+            else
+                buttonPressed(buttonPress);
 
         }
 
@@ -916,11 +1066,29 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
 
             updatePlayerUI();
+            updateNotification();
 
         }
 
         public void onGeofenceExited(String id) {
             occupied = "none";
+
+        }
+
+        public void buttonPressed(String buttonPressed) {
+
+            switch(buttonPressed){
+
+                case "playOrPause":
+                    playOrPause(null);
+                    break;
+                case "stop":
+                    stopMusic();
+                    break;
+                default:
+                    Log.i(TAG,"Unknown button press");
+
+            }
 
         }
     }
@@ -935,7 +1103,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public boolean onCreateOptionsMenu(Menu menu){
 
         getMenuInflater().inflate(R.menu.menu_main,menu);
-     return true;
+        return true;
     }
 
     public boolean onOptionsItemSelected(MenuItem item){
