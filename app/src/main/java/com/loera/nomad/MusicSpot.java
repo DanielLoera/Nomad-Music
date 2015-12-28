@@ -13,15 +13,20 @@ import com.google.android.gms.maps.model.LatLng;
 public class MusicSpot implements Parcelable {
 
     private String songName;
-    private String songFile;
-    private String user;
+    private String songLink;
+    private String albumName;
+    private String artistName;
+    private String artLink;
     private Double latt;
     private Double longi;
+    private double radius;
+    private long durationInMils;
+    private int id;
 
     public MusicSpot(String s1, String s2, double l,double l2){
 
         songName = s1;
-        songFile = s2;
+        songLink = s2;
         latt = l;
         longi = l2;
 
@@ -30,21 +35,23 @@ public class MusicSpot implements Parcelable {
     public String getSongName(){
         return songName;
     }
-    public String getSongFile(){
-        return songFile;
+    public String getSongLink(){
+        return songLink;
     }
-    public LatLng getLatLng(){
-        return new LatLng(latt,longi);
-    }
-    public String getId(){return songName;}
-    public String getUser(){return user;}
+
+    public LatLng getLatlng(){return  new LatLng(latt,longi);}
 
     protected MusicSpot(Parcel in) {
         songName = in.readString();
-        songFile = in.readString();
-        user = in.readString();
+        songLink = in.readString();
+        albumName = in.readString();
+        artistName = in.readString();
+        artLink = in.readString();
+        durationInMils = in.readLong();
+        radius = in.readDouble();
         latt = in.readByte() == 0x00 ? null : in.readDouble();
         longi = in.readByte() == 0x00 ? null : in.readDouble();
+        id = in.readInt();
     }
 
     @Override
@@ -55,8 +62,12 @@ public class MusicSpot implements Parcelable {
     @Override
     public void writeToParcel(Parcel dest, int flags) {
         dest.writeString(songName);
-        dest.writeString(songFile);
-        dest.writeString(user);
+        dest.writeString(songLink);
+        dest.writeString(albumName);
+        dest.writeString(artistName);
+        dest.writeString(artLink);
+        dest.writeLong(durationInMils);
+        dest.writeDouble(radius);
         if (latt == null) {
             dest.writeByte((byte) (0x00));
         } else {
@@ -69,6 +80,7 @@ public class MusicSpot implements Parcelable {
             dest.writeByte((byte) (0x01));
             dest.writeDouble(longi);
         }
+        dest.writeInt(id);
     }
 
     @SuppressWarnings("unused")
@@ -83,4 +95,63 @@ public class MusicSpot implements Parcelable {
             return new MusicSpot[size];
         }
     };
+
+    public String getAlbumName() {
+        return albumName;
+    }
+
+    public void setAlbumName(String albumName) {
+        this.albumName = albumName;
+    }
+
+    public String getArtistName() {
+        return artistName;
+    }
+
+    public void setArtistName(String artistName) {
+        this.artistName = artistName;
+    }
+
+    public String getArtLink() {
+        return artLink;
+    }
+
+    public void setArtLink(String artLink) {
+        this.artLink = artLink;
+    }
+
+    public long getDurationInMils() {
+        return durationInMils;
+    }
+
+    public void setDurationInMils(long durationInMils) {
+        this.durationInMils = durationInMils;
+    }
+
+    public double getRadius() {
+        return radius;
+    }
+
+    public void setRadius(double radius) {
+        this.radius = radius;
+    }
+
+    public int getId(){return id;}
+
+    public void setId() {
+        this.id = ((int)(songLink.hashCode() / (Math.random() * 42)) + (getLastThree(latt) + getLastThree(longi)));
+    }
+
+    public void setId(int id){
+        this.id = id;
+    }
+
+    private int getLastThree(double d){
+
+        String dS = d+"";
+
+        String ans = ""+ dS.charAt(dS.length()-3) + dS.charAt(dS.length()-2) +dS.charAt(dS.length()-2);
+
+        return Integer.parseInt(ans);
+    }
 }

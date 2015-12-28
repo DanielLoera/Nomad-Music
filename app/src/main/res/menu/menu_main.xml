@@ -6,4 +6,10 @@
         android:title="Follow Position"
         android:icon="@drawable/ic_crosshairs_gps"
         app:showAsAction="ifRoom"/>
+    <item android:orderInCategory="99"
+        android:id="@+id/maptype"
+        android:title="Change Map Type"
+        android:icon="@drawable/ic_map"
+        app:showAsAction="ifRoom"
+        />
 </menu>

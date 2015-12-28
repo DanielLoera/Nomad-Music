@@ -1,49 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.loera.nomad" >
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.loera.nomad">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_LOGS" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme" >
+        android:theme="@style/AppTheme">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyAajXrxK8Q1pVOZsCN7e4CzWbpMTgqYZkk" />
 
-        <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyAajXrxK8Q1pVOZsCN7e4CzWbpMTgqYZkk"/>
+        <receiver
+            android:name=".MainActivity$GeofenceReciever"
+            android:exported="false"></receiver>
 
+        <!-- Needed for LoginActivity to work -->
+        <activity
+            android:name="com.spotify.sdk.android.authentication.LoginActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
-
-        <receiver android:name="com.loera.nomad.MainActivity$GeofenceReciever"
-            android:exported="false"
-            >
-        </receiver>
         <activity
             android:name=".MainActivity"
             android:label="@string/app_name"
-            android:theme="@style/AppTheme.NoActionBar"
             android:screenOrientation="portrait"
-            >
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
 
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="dannyloera.com"
+                    android:scheme="http" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <intent-filter >
-                <action android:name="com.aol.android.geofence.ACTION_RECEIVE_GEOFENCE"/>
+            <intent-filter>
+                <action android:name="com.aol.android.geofence.ACTION_RECEIVE_GEOFENCE" />
             </intent-filter>
-
-
         </activity>
-
-
+        <activity
+            android:name=".SpotOrganizer"
+            android:label="@string/title_activity_spot_organizer"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:screenOrientation="portrait"
+            ></activity>
     </application>
-
 
 </manifest>

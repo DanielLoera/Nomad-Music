@@ -13,14 +13,14 @@
     android:layout_alignParentTop="true"
     android:layout_alignParentLeft="true"
     android:id="@+id/mapLayout"
-    android:clickable="true"
     >
     <fragment
         android:name="com.google.android.gms.maps.MapFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:id="@+id/mapFragment"
-        tools:layout="@layout/abc_action_bar_title_item" />
+        tools:layout="@layout/abc_action_bar_title_item"
+        />
 </FrameLayout>
     <RelativeLayout
         android:layout_width="fill_parent"
@@ -28,6 +28,12 @@
         android:id="@+id/player"
         android:visibility="invisible"
         >
+
+        <RelativeLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:id="@+id/bottom_bar_layout"
+            >
 
         <TextView
             android:id="@+id/bottomBar"
@@ -46,6 +52,7 @@
             android:src="@drawable/ic_play"
             android:background="@color/colorPrimary"
             android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
 
 
             />
@@ -60,25 +67,18 @@
             android:ellipsize="marquee"
             android:marqueeRepeatLimit="marquee_forever"
             android:scrollHorizontally="true"
-            android:paddingTop="@dimen/padding_text_view"
             android:singleLine="true"
             android:textSize="20sp"
+            android:layout_centerVertical="true"
             />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:id="@+id/claimedByText"
-                android:textColor="#FFFFFF"
-                android:layout_below="@+id/locationText"
-                android:text="Claimed By: "
-                android:paddingLeft="@dimen/padding_text_view"
-                android:paddingBottom="@dimen/padding_text_view"
-                />
+
+        </RelativeLayout>
+
         <ImageView
             android:layout_width="fill_parent"
             android:layout_height="280dp"
-            android:layout_below="@+id/bottomBar"
+            android:layout_below="@+id/bottom_bar_layout"
             android:src="@color/material_blue_grey_950"
             android:id="@+id/albumArt"
             />
@@ -104,7 +104,7 @@
             android:focusableInTouchMode="true"
             android:freezesText="true"
             android:layout_below="@+id/albumArt"
-            android:padding="10dp"
+            android:paddingLeft="10dp"
             android:textColor="#FFFFFF"
             android:id="@+id/songText"
             />
@@ -122,11 +122,9 @@
             android:focusableInTouchMode="true"
             android:freezesText="true"
             android:textColor="#FFFFFF"
-            android:padding="5dp"
+            android:paddingLeft="10dp"
             android:id="@+id/artsitAlbumText"
-            android:paddingLeft="@dimen/padding_text_view"
             />
-
 
         <RelativeLayout
             android:layout_width="fill_parent"
@@ -137,7 +135,7 @@
             >
 
         <ImageButton
-            android:contentDescription="playPauselol"
+            android:contentDescription="playPause"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_play"
@@ -163,6 +161,7 @@
             app:dsb_indicatorColor = "@color/colorAccent"
             app:dsb_trackColor = "@color/colorPrimaryDark"
             android:id="@+id/musicSeekBar"
+            android:layout_centerVertical="true"
             />
 
     </RelativeLayout>
