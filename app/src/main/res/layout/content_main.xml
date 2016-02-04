@@ -75,13 +75,35 @@
 
         </RelativeLayout>
 
-        <ImageView
+        <RelativeLayout
             android:layout_width="fill_parent"
             android:layout_height="280dp"
             android:layout_below="@+id/bottom_bar_layout"
-            android:src="@color/material_blue_grey_950"
             android:id="@+id/albumArt"
-            />
+            android:clickable="true"
+            >
+            <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@color/material_blue_grey_950"
+                    android:id="@+id/artImageView"
+                />
+
+            <TextView
+                android:layout_below="@+id/artImageView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                android:id="@+id/artText"
+                android:textColor="#FFFFFF"
+                android:layout_centerVertical="true"
+                android:layout_centerHorizontal="true"
+                android:textAlignment="center"
+                android:textSize="20sp"
+                />
+
+        </RelativeLayout>
+
         <TextView
             android:layout_below="@+id/albumArt"
             android:layout_width="fill_parent"
@@ -107,6 +129,7 @@
             android:paddingLeft="10dp"
             android:textColor="#FFFFFF"
             android:id="@+id/songText"
+            android:layout_marginTop="10dp"
             />
         <TextView
             android:gravity="left"

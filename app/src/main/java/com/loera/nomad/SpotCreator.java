@@ -1,41 +1,45 @@
  package com.loera.nomad;
 
  import android.app.Activity;
-import android.app.DialogFragment;
-import android.content.Context;
-import android.content.DialogInterface;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
-import android.os.AsyncTask;
-import android.os.Bundle;
-import android.util.Log;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.LinearLayout;
-import android.widget.SearchView;
-import android.widget.TextView;
+ import android.app.DialogFragment;
+ import android.content.Context;
+ import android.content.DialogInterface;
+ import android.graphics.Bitmap;
+ import android.graphics.BitmapFactory;
+ import android.graphics.drawable.BitmapDrawable;
+ import android.graphics.drawable.Drawable;
+ import android.os.AsyncTask;
+ import android.os.Bundle;
+ import android.util.Log;
+ import android.view.LayoutInflater;
+ import android.view.View;
+ import android.view.ViewGroup;
+ import android.widget.Button;
+ import android.widget.EditText;
+ import android.widget.LinearLayout;
+ import android.widget.RelativeLayout;
+ import android.widget.ScrollView;
+ import android.widget.SearchView;
+ import android.widget.TextView;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+ import org.json.JSONArray;
+ import org.json.JSONException;
+ import org.json.JSONObject;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
+ import java.io.BufferedInputStream;
+ import java.io.BufferedReader;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.InputStreamReader;
+ import java.net.HttpURLConnection;
+ import java.net.URL;
 
  /**
  * Created by Daniel on 11/9/2015.
  * <p/>
  * :)
  */
-public class SongChooser extends DialogFragment {
+public class SpotCreator extends DialogFragment {
      float density;
 
     View view;
@@ -45,12 +49,13 @@ public class SongChooser extends DialogFragment {
      int viewHeight;
 
      SpotifyTrack[] tracks;
+     SpotifyTrack selectedStrack;
 
     final String TAG = "Song Chooser";
 
     public interface SongListener{
 
-        void onRecieveSong(SpotifyTrack song);
+        void onRecieveSong(SpotifyTrack song,String message);
         void noSelectionMade();
 
     }
@@ -197,9 +202,8 @@ public class SongChooser extends DialogFragment {
              textView.setOnClickListener(new View.OnClickListener() {
                  @Override
                  public void onClick(View v) {
-                     songListener.onRecieveSong(tracks[v.getId()]);
-                     pressed = true;
-                     dismiss();
+                     selectedStrack = tracks[v.getId()];
+                     showMessageCreator();
                  }
              });
 
@@ -212,6 +216,26 @@ public class SongChooser extends DialogFragment {
          return textViews;
 
      }
+
+     private void showMessageCreator() {
+        SearchView search = (SearchView)view.findViewById(R.id.searchBox);
+         ScrollView results = (ScrollView)view.findViewById(R.id.songResultsScroll);
+         RelativeLayout messageCreator = (RelativeLayout)view.findViewById(R.id.messageCreator);
+         search.setVisibility(View.GONE);
+         results.setVisibility(View.GONE);
+         messageCreator.setVisibility(View.VISIBLE);
+         final EditText text = (EditText) view.findViewById(R.id.spotEditText);
+         Button messageCreatorButton = (Button)view.findViewById(R.id.messageCreatorButton);
+         messageCreatorButton.setOnClickListener(new View.OnClickListener() {
+             @Override
+             public void onClick(View v) {
+                pressed = true;
+                 songListener.onRecieveSong(selectedStrack,text.getText().toString());
+                 dismiss();
+             }
+         });
+     }
+
 
      public SpotifyTrack[] getTracksFromJSONArray(JSONArray a){
 

@@ -4,6 +4,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 
 import com.google.android.gms.maps.model.LatLng;
+import com.google.maps.android.SphericalUtil;
 
 /**
  * Created by Daniel on 11/9/2015.
@@ -22,6 +23,8 @@ public class MusicSpot implements Parcelable {
     private double radius;
     private long durationInMils;
     private int id;
+    private int visits;
+    private String message;
 
     public MusicSpot(String s1, String s2, double l,double l2){
 
@@ -32,12 +35,19 @@ public class MusicSpot implements Parcelable {
 
     }
 
+    public MusicSpot(){}
+
+
     public String getSongName(){
         return songName;
     }
+    public void setSongName(String n){songName = n;}
     public String getSongLink(){
         return songLink;
     }
+    public void setSongLink(String link){songLink = link;}
+    public void setLatt(double l){latt = l;}
+    public void setLongi(double l){longi = l;}
 
     public LatLng getLatlng(){return  new LatLng(latt,longi);}
 
@@ -52,6 +62,8 @@ public class MusicSpot implements Parcelable {
         latt = in.readByte() == 0x00 ? null : in.readDouble();
         longi = in.readByte() == 0x00 ? null : in.readDouble();
         id = in.readInt();
+        visits = in.readInt();
+        message = in.readString();
     }
 
     @Override
@@ -81,6 +93,8 @@ public class MusicSpot implements Parcelable {
             dest.writeDouble(longi);
         }
         dest.writeInt(id);
+        dest.writeInt(visits);
+        dest.writeString(message);
     }
 
     @SuppressWarnings("unused")
@@ -154,4 +168,40 @@ public class MusicSpot implements Parcelable {
 
         return Integer.parseInt(ans);
     }
+
+    public int getVisits() {
+        return visits;
+    }
+
+    public void setVisits(int visits) {
+        this.visits = visits;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public double distanceBetween(LatLng other){
+       return SphericalUtil.computeDistanceBetween(other, getLatlng() );
+    }
+
+    public String toString(){
+        return "" + id + "\n" +
+                latt+ "\n" +
+                longi+ "\n" +
+                radius+ "\n" +
+                durationInMils+ "\n" +
+                message+ "\n" +
+                songName+ "\n" +
+                songLink+ "\n" +
+                albumName+ "\n" +
+                artistName+ "\n" +
+                artLink;
+    }
+
+
 }
