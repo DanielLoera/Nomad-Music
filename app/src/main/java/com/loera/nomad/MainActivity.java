@@ -14,7 +14,6 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.database.DataSetObserver;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -30,7 +29,9 @@ import android.os.Environment;
 import android.os.Handler;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
+import android.support.percent.PercentRelativeLayout;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
@@ -39,20 +40,14 @@ import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Display;
 import android.view.Gravity;
-import android.view.KeyCharacterMap;
-import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListAdapter;
-import android.widget.ListView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -73,6 +68,7 @@ import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.maps.android.SphericalUtil;
 import com.spotify.sdk.android.authentication.AuthenticationClient;
 import com.spotify.sdk.android.authentication.AuthenticationRequest;
 import com.spotify.sdk.android.authentication.AuthenticationResponse;
@@ -113,7 +109,9 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Scanner;
 
-public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, PlayerNotificationCallback, PlayerStateCallback, ConnectionStateCallback, SpotCreator.SongListener, ListView.OnItemClickListener {
+import io.codetail.animation.ViewAnimationUtils;
+
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, PlayerNotificationCallback, PlayerStateCallback, ConnectionStateCallback, SpotCreator.SongListener {
 
     static boolean TEST_MODE = false;
     private final String TAG = "Main Activity";
@@ -128,12 +126,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     GoogleMap googleMap;
 
     LatLng currentLatLng;
+    LatLng referenceLatLng;
 
     NotificationCompat.Builder notification;
     NotificationManager notMgr;
 
-    ArrayList<Integer> ids = new ArrayList<>();
-    List<CircleOptions> circles;
     HashMap<Integer, MusicSpot> musicSpots;
     static LinkedList<Integer> toRemove = new LinkedList<>();
 
@@ -145,21 +142,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     ActionBarDrawerToggle toggle;
     Menu optionsMenu;
 
-    static String[] currentSong;
-
     DiscreteSeekBar seekBar;
     DiscreteSeekBar radiusSeekBar;
     CircleOptions currentCircle;
 
-    android.os.Handler seekUpdater, circleUpdater, serverUpdater;
-    Runnable secondCheck, circleCheck, serverCheck;
+    android.os.Handler seekUpdater, circleUpdater, serverUpdater, songTimeUpdater;
+    Runnable secondCheck, circleCheck, serverCheck, songTimeCheck;
+
+    private final static int NO_SONG_PLAYING = -1;
+    private final static int PLAY = 1;
+    private final static int PAUSE = 2;
+    private final static int FAST_FORWARD = 3;
+    private final static int REWIND = 4;
 
     static boolean expanded = false;
     static boolean slidePlayer = false;
     static boolean addingGeofence = false;
     static boolean UISetup = false;
     static boolean followGps = false;
-    static boolean playing = false;
+    static int playing = NO_SONG_PLAYING;
 
     private boolean spotifyLoggedIn = false;
     public String responseToken;
@@ -167,15 +168,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public static final String REDIRECT_URI = "http://dannyloera.com";
     PlayerState playerState;
 
+    final int COLOR_START = Color.parseColor("#00C853");
+    final int COLOR_END = Color.parseColor("#F50057");
+
     SharedPreferences prefs;
     private String currentCity;
+    private boolean paused;
+    private float closedPlayerY;
+    private float currentY;
+    private PercentRelativeLayout player;
+    private DrawerLayout drawerLayout;
+    private RelativeLayout locationPlay;
+    private RelativeLayout radiusChooser;
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         new LogWriter().execute();
-
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         context = this;
@@ -186,10 +196,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             getWindow().setStatusBarColor(getResources().getColor(R.color.colorPrimaryDark));
         }
 
-
         setupDrawer();
         readInstanceState(savedInstanceState);
-
         reciever = new GeofenceReciever();
         IntentFilter filter = new IntentFilter();
         filter.addAction("com.aol.android.geofence.ACTION_RECEIVE_GEOFENCE");
@@ -202,44 +210,43 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         map.getMapAsync(this);
         createLocationRequest();
         buildGoogleApiClient();
-
         playServices.connect();
 
-
+        setupSpotify();
     }
 
     public void onResume() {
         super.onResume();
         if (toRemove.size() > 0) { //Music spots need to be removed
             Log.i(TAG, "Removing deleted spots");
-            removeGeofences(); //disconnect all geofences
-            circles.clear();//delete previous circles
+            stopMonitoringGeofences(); //disconnect all geofences
+            googleMap.clear();//delete previous circles
             for (int s : toRemove) { //remove only ids necessary
-                ids.remove(new Integer(s));
+                musicSpots.remove(s);
                 new RemoveMusicSpotFromServer(s).execute();
             }
-            if (ids.size() > 0) {//if there are any geofences left, monitor them.
-                monitorCurrentMusicSpots();
+            if (!musicSpots.isEmpty()) {//if there are any geofences left, monitor them.
+                monitorNearbySpots();
             }
-            File saved  = new File(context.getExternalFilesDir(ACTIVITY_SERVICE),"saved.txt");
-            if(ids.size() > 0){
-            String offlineSpots = "";
-            for(int i = 0;i<ids.size() - 1 ; i++)
-                offlineSpots+= musicSpots.get(ids.get(i)).toString() + "\n";
-                offlineSpots += musicSpots.get(ids.get(ids.size()-1)).toString();
-            try {
-                saved.delete();
-                saved.createNewFile();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            saveMusicSpotOffline(offlineSpots);
-            }else{
+            File saved = new File(context.getExternalFilesDir(ACTIVITY_SERVICE), "saved.txt");
+            if (!musicSpots.isEmpty()) {
+                String offlineSpots = "";
+                ArrayList<MusicSpot> mspots = new ArrayList<>(musicSpots.values());
+                for (int i = 0; i < mspots.size() - 1; i++)
+                    offlineSpots += mspots.get(i).toString() + "\n";
+                offlineSpots += mspots.get(mspots.size() - 1).toString();
+                try {
+                    saved.delete();
+                    saved.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                saveMusicSpotOffline(offlineSpots);
+            } else {
                 saved.delete();
             }
             toRemove.clear();
-            googleMap.clear();
-            addCircles();
+            redrawCircles();
         }
     }
 
@@ -247,14 +254,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         if (savedInstanceState == null) {
             musicSpots = new HashMap<>();
-            circles = new LinkedList<>();
-            ids = new ArrayList<>();
         } else {
 
-            musicSpots = (HashMap) savedInstanceState.getSerializable("musicSpots");
+            musicSpots = (HashMap) (savedInstanceState.getSerializable("musicSpots"));
             occupied = savedInstanceState.getInt("occupied");
-            circles = getCirclesFromList(savedInstanceState.getStringArrayList("circles"));
-            ids = savedInstanceState.getIntegerArrayList("names");
         }
     }
 
@@ -263,89 +266,68 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         state.putSerializable("musicSpots", musicSpots);
         state.putInt("occupied", occupied);
-        state.putStringArrayList("circles", getCirclesArrayList());
-        state.putIntegerArrayList("ids", ids);
     }
 
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        RelativeLayout player = (RelativeLayout) findViewById(R.id.player);
+        if (player == null)
+            player = (PercentRelativeLayout) findViewById(R.id.player);
         if (hasFocus && player.getVisibility() == View.INVISIBLE) {
             setupUI();
-            if (!spotifyLoggedIn)
-                setupSpotify();
         }
 
-    }
-
-    public void monitorCurrentMusicSpots() {
-        LinkedList<Geofence> fences = new LinkedList<>();
-
-        for (int i = 0; i < ids.size(); i++) {
-
-            MusicSpot m = musicSpots.get(ids.get(i));
-
-            LatLng latLng = m.getLatlng();
-
-            Location loc = new Location("Nomad");
-            loc.setLongitude(latLng.longitude);
-            loc.setLatitude(latLng.latitude);
-
-            Geofence g = getGeofenceFromSpot(m);
-
-            fences.add(g);
-            circles.add(getCircle(m));
-        }
-        monitorGeofence(fences);
     }
 
     private CircleOptions getCircle(MusicSpot m) {
         CircleOptions circle = new CircleOptions();
         circle.center(m.getLatlng());
         circle.strokeWidth(10);
-        circle.strokeColor(getResources().getColor(R.color.colorAccentDark));
-        circle.fillColor(0x40C6096B);
+        int[] colors = getColorFromTime(m.getTime());
+        circle.fillColor(colors[0]);
+        circle.strokeColor(colors[1]);
         circle.radius(m.getRadius());
 
         return circle;
     }
 
-    public ArrayList<String> getCirclesArrayList() {
-        ArrayList<String> l = new ArrayList();
+    private int[] getColorFromTime(long time) {
+        long difference = (System.currentTimeMillis() / 1000L) - time;
+        float percentage = difference / 432000.0f;
 
-        for (CircleOptions c : circles) {
+        int color = interpolateColor(COLOR_START, COLOR_END,
+                percentage);
 
-            String s = c.getCenter().latitude + "," + c.getCenter().longitude + "," +
-                    c.getRadius() + "," + c.getFillColor() + "," + c.getStrokeColor() + ","
-                    + c.getStrokeWidth();
-            l.add(s);
-
-        }
-
-
-        return l;
-
+        return new int[]{color, darkenColor(color)};
     }
 
-    public LinkedList<CircleOptions> getCirclesFromList(ArrayList<String> l) {
 
-        LinkedList<CircleOptions> list = new LinkedList<>();
+    private float interpolate(final float a, final float b,
+                              final float proportion) {
+        return (a + ((b - a) * proportion));
+    }
 
-        for (String s : l) {
-
-            Scanner sc = new Scanner(s);
-            sc.useDelimiter(",");
-
-            CircleOptions circle = new CircleOptions();
-            circle.center(new LatLng(sc.nextDouble(), sc.nextDouble()));
-            circle.radius(sc.nextDouble());
-            circle.fillColor(sc.nextInt());
-            circle.strokeColor(sc.nextInt());
-            circle.strokeWidth(sc.nextFloat());
-
-            list.add(circle);
+    private int interpolateColor(final int a, final int b,
+                                 final float proportion) {
+        final float[] hsva = new float[3];
+        final float[] hsvb = new float[3];
+        Color.colorToHSV(a, hsva);
+        Color.colorToHSV(b, hsvb);
+        for (int i = 0; i < 3; i++) {
+            hsvb[i] = interpolate(hsva[i], hsvb[i], proportion);
         }
-        return list;
+
+        int color = Color.HSVToColor(hsvb);
+        color = Color.argb(50, Color.red(color), Color.green(color), Color.blue(color));
+
+        return color;
+    }
+
+    private int darkenColor(int color) {
+        float[] hsv = new float[3];
+        Color.colorToHSV(color, hsv);
+        hsv[2] *= 0.8f; // value component
+        color = Color.HSVToColor(hsv);
+        return color;
     }
 
     public void onPostCreate(Bundle savedInstanceState) {
@@ -372,9 +354,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
     /***
-     *
      * SPOTIFY METHODS
-     *
      */
 
     public void setupSpotify() {
@@ -397,7 +377,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onLoggedIn() {
         Log.i(TAG, "User Succesfully logged in.");
         spotifyLoggedIn = true;
-        if(occupied != 0){
+        if (occupied != 0) {
             playMusicSpot(musicSpots.get(occupied));
         }
     }
@@ -443,7 +423,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (eventType == EventType.PAUSE) {
 
             if (playerState.positionInMs == playerState.durationInMs) { // song has ended
-                setPlayOrPauseIcons("play");
+                setPlayOrPauseIcons(PLAY);
                 stopSeek();
                 seekBar.setProgress(0);
             } else if (eventType == EventType.TRACK_CHANGED) {
@@ -496,9 +476,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     /**
-     *
      * LOCATION/MAP METHODS
-     *
      */
 
     public Geofence getCurrentGeofence(Location currentLocation, int id) {
@@ -545,17 +523,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     boolean firstLocationGrab = currentLatLng == null;
 
-                    if(location != null){
-                    String tempCity = getCity(location);
-                    if (tempCity != null) {
-                        currentCity = tempCity;
-                        if (serverUpdater == null)
-                            startServerUpdates();
+                    if (location != null) {
+                        String tempCity = getCity(location);
+                        if (tempCity != null) {
+                            currentCity = tempCity;
+                            if (serverUpdater == null)
+                                startServerUpdates();
                         }
                     }
 
                     currentLatLng = new LatLng(location.getLatitude(), location.getLongitude());
 
+                    if (referenceLatLng == null)
+                        referenceLatLng = currentLatLng;
+                    else if (SphericalUtil.computeDistanceBetween(referenceLatLng, currentLatLng) >= 500) {
+                        //if current LatLng farther than 500 meters from reference LatLng
+                        Toast.makeText(context, "New Refernce Point at: Lat: " + currentLatLng.latitude + " Long: " + currentLatLng.longitude
+                                , Toast.LENGTH_SHORT).show();
+                        referenceLatLng = currentLatLng;
+                        monitorNearbySpots();
+                    }
 
                     if (followGps || firstLocationGrab) {
                         googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentLatLng, 18.0f));
@@ -571,7 +558,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public String getCity(Location location) {
         Geocoder coder = new Geocoder(context);
-        List<Address> addresses = new ArrayList();
+        List<Address> addresses = new ArrayList<>();
 
         try {
             addresses = coder.getFromLocation(location.getLatitude(), location.getLongitude(), 10);
@@ -581,25 +568,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         }
 
-        if(addresses.isEmpty())
+        if (addresses.isEmpty())
             return null;
 
         String city = null;
 
         Address address = addresses.get(0);
-        if (address.getLocality() != null)  city=address.getLocality();
-        else
-        if (address.getSubAdminArea() != null)  city=address.getSubAdminArea();
+        if (address.getLocality() != null) city = address.getLocality();
+        else if (address.getSubAdminArea() != null) city = address.getSubAdminArea();
 
         return city;
 
     }
 
-    public void addCircles() {
-
-        for (CircleOptions c : circles)
-            googleMap.addCircle(c);
-
+    public void redrawCircles() {
+        googleMap.clear();
+        for (MusicSpot m : musicSpots.values())
+            googleMap.addCircle(getCircle(m));
     }
 
     public void monitorGeofence(Geofence g) {
@@ -658,7 +643,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onConnected(Bundle bundle) {
                         Toast.makeText(context, "Connected to Google Play Services", Toast.LENGTH_SHORT).show();
-                        removeGeofences();
+                        stopMonitoringGeofences();
 
                         startLocationUpdates();
                     }
@@ -700,12 +685,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
         Intent intent = new Intent("com.aol.android.geofence.ACTION_RECEIVE_GEOFENCE");
         // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
-        // calling addGeofences() and removeGeofences().
+        // calling addGeofences() and stopMonitoringGeofences().
         return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.
                 FLAG_UPDATE_CURRENT);
     }
 
-    public void removeGeofences() {
+    public void stopMonitoringGeofences() {
         LocationServices.GeofencingApi.removeGeofences(
                 playServices,
                 // This is the same pending intent that was used in addGeofences().
@@ -732,7 +717,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
         googleMap.setBuildingsEnabled(false);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            requestPermission(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION});
+            requestPermission(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION});
         }
         googleMap.setMyLocationEnabled(true);
 
@@ -745,8 +730,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void noSelectionMade() {
         addingGeofence = false;
-        googleMap.clear();
-        addCircles();
+        redrawCircles();
     }
 
     public class GeofenceReciever extends BroadcastReceiver {
@@ -811,8 +795,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             occupied = Integer.parseInt(id);
             new IncrementVisitorCountOnSpot(id).execute();
             Log.i(TAG, "Entered Geofence id: " + occupied);
-            if(spotifyLoggedIn){
-            playMusicSpot(musicSpots.get(occupied));
+            if (spotifyLoggedIn) {
+                if(occupied != playing)
+                playMusicSpot(musicSpots.get(occupied));
             }
 
         }
@@ -841,44 +826,42 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
     /**
-     *
      * SERVER METHODS / CLASSES
-     *
      */
 
-    public void startServerUpdates(){
+    public void startServerUpdates() {
         serverUpdater = new Handler();
 
         serverCheck = new Runnable() {
             @Override
             public void run() {
-                Log.i("Server","server update from " + currentCity +" fetched.");
+                Log.i("Server", "server update from " + currentCity + " fetched.");
                 new getMusicSpotsFromServer().execute();
-                serverUpdater.postDelayed(serverCheck,(1000 * 60) * 5);
+                serverUpdater.postDelayed(serverCheck, (1000 * 60) * 5);
             }
         };
 
         serverCheck.run();
     }
 
-    public void stopServerUpdates(){
+    public void stopServerUpdates() {
         serverUpdater.removeCallbacks(serverCheck);
     }
 
-    public class getMusicSpotsFromServer extends AsyncTask<Void,Void,Void>{
+    public class getMusicSpotsFromServer extends AsyncTask<Void, Void, Void> {
 
         MusicSpot[] spots;
 
 
-        public JSONArray getSpotArray()throws JSONException{
+        public JSONArray getSpotArray() throws JSONException {
 
             StringBuilder result = new StringBuilder();
             URL url = null;
             try {
 
-                Log.i("Server","Attempting to retrieve spots from " + currentCity);
+                Log.i("Server", "Attempting to retrieve spots from " + currentCity);
 
-                url = new URL("http://www.dannyloera.com/nomad/get_music_spots.php?location="+currentCity);
+                url = new URL("http://www.dannyloera.com/nomad/get_music_spots.php?location=" + currentCity);
 
                 HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
 
@@ -895,7 +878,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 urlConnection.disconnect();
-            }catch(Exception e){
+            } catch (Exception e) {
 
                 e.printStackTrace();
             }
@@ -904,9 +887,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         }
 
-        public MusicSpot getMusicSpotFromJSON(JSONObject j)throws JSONException{
+        public MusicSpot getMusicSpotFromJSON(JSONObject j) throws JSONException {
 
-            MusicSpot m = new MusicSpot(j.getString("song name"),j.getString("song link"),j.getDouble("latitude"),j.getDouble("longitude"));
+            MusicSpot m = new MusicSpot(j.getString("song name"), j.getString("song link"), j.getDouble("latitude"), j.getDouble("longitude"));
             m.setId(j.getInt("id"));
             m.setDurationInMils(j.getLong("song duration"));
             m.setArtLink(j.getString("art link"));
@@ -915,6 +898,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             m.setRadius(j.getDouble("radius"));
             m.setVisits(j.getInt("visits"));
             m.setMessage(j.getString("message"));
+            m.setTime(j.getLong("time"));
 
             return m;
 
@@ -927,18 +911,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             try {
                 JSONArray jsonArray = getSpotArray();
 
-                if(jsonArray.length() > 0){
+                if (jsonArray.length() > 0) {
 
                     spots = new MusicSpot[jsonArray.length()];
 
-                    for(int i = 0;i<jsonArray.length();i++){
+                    for (int i = 0; i < jsonArray.length(); i++) {
 
-                        spots[i] = getMusicSpotFromJSON((JSONObject)jsonArray.get(i));
+                        spots[i] = getMusicSpotFromJSON((JSONObject) jsonArray.get(i));
 
                     }
 
                 }
-
 
 
             } catch (JSONException e) {
@@ -949,47 +932,49 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return null;
         }
 
-        public void onPostExecute(Void result){
+        public void onPostExecute(Void result) {
             int count = 0;
-            if(spots != null) {
+            if (spots != null) {
                 for (MusicSpot m : spots) {
                     if (!musicSpots.containsKey(m.getId())) {
                         count++;
                         musicSpots.put(m.getId(), m);
-                        circles.add(getCircle(m));
                     }
                 }
-                Log.i("Server",count + " new spots added.");
-                googleMap.clear();
-                addCircles();
+                Log.i("Server", count + " new spots added.");
+                redrawCircles();
                 monitorNearbySpots();
             }
         }
     }
 
-    private void monitorNearbySpots(){
+    private void monitorNearbySpots() {
         ArrayList<Integer> ids = new ArrayList<>(musicSpots.keySet());
-
-        if(ids.size() <= 100){
-            for(Integer i : ids){
+        stopMonitoringGeofences();
+        if (ids.size() <= 100) { // monitor all spots, there are less than 100
+            for (Integer i : ids) {
                 monitorGeofence(getGeofenceFromSpot(musicSpots.get(i)));
             }
-        }else{
-            PriorityQueue<MusicSpot> top = new PriorityQueue<>(ids.size(), new SpotComparator());
+        } else {//monitor only the nearest 100 spots
+            PriorityQueue<MusicSpot> top = new PriorityQueue<>(ids.size(), new SpotComparator(currentLatLng));
             top.addAll(musicSpots.values());
-            for(int i = 0;i<100;i++){
+            for (int i = 0; i < 100; i++) {
                 monitorGeofence(getGeofenceFromSpot(top.poll()));
             }
         }
     }
 
     private class SpotComparator implements Comparator<MusicSpot> {
+        LatLng toCompare;
 
+        public SpotComparator(LatLng toCompare) {
+            this.toCompare = toCompare;
+        }
 
         @Override
         public int compare(MusicSpot lhs, MusicSpot rhs) {
-            double distance1 = lhs.distanceBetween(currentLatLng);
-            double distance2 = rhs.distanceBetween(currentLatLng);
+            double distance1 = lhs.distanceBetween(toCompare);
+            double distance2 = rhs.distanceBetween(toCompare);
 
             return distance1 >= distance2 ? distance1 == distance2 ? 0 : 1 : -1;
         }
@@ -1000,20 +985,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    public class addMusicSpotToServer extends AsyncTask<Void,Void,Void>{
+    public class addMusicSpotToServer extends AsyncTask<Void, Void, Void> {
 
         MusicSpot spot;
 
-        public addMusicSpotToServer(MusicSpot m){
+        public addMusicSpotToServer(MusicSpot m) {
             this.spot = m;
         }
 
-        private class NameValuePair{
+        private class NameValuePair {
 
             private String name;
             private String value;
 
-            public NameValuePair(String name,String value){
+            public NameValuePair(String name, String value) {
 
                 this.name = name;
                 this.value = value;
@@ -1029,13 +1014,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
 
 
-        private String getQuery(List<NameValuePair> params) throws UnsupportedEncodingException
-        {
+        private String getQuery(List<NameValuePair> params) throws UnsupportedEncodingException {
             StringBuilder result = new StringBuilder();
             boolean first = true;
 
-            for (NameValuePair pair : params)
-            {
+            for (NameValuePair pair : params) {
                 if (first)
                     first = false;
                 else
@@ -1065,7 +1048,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 List<NameValuePair> pairs = new ArrayList<>();
 
-                pairs.add(new NameValuePair("location",currentCity));
+                pairs.add(new NameValuePair("location", currentCity));
                 pairs.add(new NameValuePair("id", spot.getId() + ""));
                 pairs.add(new NameValuePair("latitude", spot.getLatlng().latitude + ""));
                 pairs.add(new NameValuePair("longitude", spot.getLatlng().longitude + ""));
@@ -1076,7 +1059,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 pairs.add(new NameValuePair("songName", spot.getSongName()));
                 pairs.add(new NameValuePair("artistName", spot.getArtistName()));
                 pairs.add(new NameValuePair("albumName", spot.getAlbumName()));
-                pairs.add(new NameValuePair("message",spot.getMessage()));
+                pairs.add(new NameValuePair("message", spot.getMessage()));
 
                 OutputStream os = urlConnection.getOutputStream();
                 BufferedWriter writer = new BufferedWriter(
@@ -1088,17 +1071,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 urlConnection.connect();
 
-                switch (urlConnection.getResponseCode()){
+                switch (urlConnection.getResponseCode()) {
 
                     case 1:
-                        Log.i("Server","Spot "+spot.getId()+" succesfully added to server!");
+                        Log.i("Server", "Spot " + spot.getId() + " succesfully added to server!");
 
                     case 0:
-                        Log.i("Server","Spot could not be added to server. :(");
+                        Log.i("Server", "Spot could not be added to server. :(");
                 }
 
                 urlConnection.disconnect();
-            }catch(IOException e){
+            } catch (IOException e) {
                 e.printStackTrace();
             }
 
@@ -1106,11 +1089,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    public class RemoveMusicSpotFromServer extends  AsyncTask<Void,Void,Void>{
+    public class RemoveMusicSpotFromServer extends AsyncTask<Void, Void, Void> {
 
         int id;
 
-        public RemoveMusicSpotFromServer(int id){
+        public RemoveMusicSpotFromServer(int id) {
             this.id = id;
         }
 
@@ -1123,7 +1106,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 Log.i(TAG, "Removing " + id + " from " + currentCity + " table on nomadmusic database.");
 
-                url = new URL("http://www.dannyloera.com/nomad/remove_spot.php?location="+currentCity+"&id="+id);
+                url = new URL("http://www.dannyloera.com/nomad/remove_spot.php?location=" + currentCity + "&id=" + id);
 
                 HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
 
@@ -1141,23 +1124,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
                 urlConnection.disconnect();
-            }catch(Exception e){
+            } catch (Exception e) {
 
                 e.printStackTrace();
             }
 
-            Log.i(TAG,result.toString());
+            Log.i(TAG, result.toString());
 
 
             return null;
         }
     }
 
-    public class IncrementVisitorCountOnSpot extends AsyncTask<Void,Void,Void>{
+    public class IncrementVisitorCountOnSpot extends AsyncTask<Void, Void, Void> {
 
         String id;
 
-        public IncrementVisitorCountOnSpot(String id){
+        public IncrementVisitorCountOnSpot(String id) {
             this.id = id;
         }
 
@@ -1166,7 +1149,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             StringBuilder result = new StringBuilder();
             URL url = null;
             try {
-                url = new URL("http://www.dannyloera.com/nomad/new_visitor.php?location="+currentCity+"&id="+id);
+                url = new URL("http://www.dannyloera.com/nomad/new_visitor.php?location=" + currentCity + "&id=" + id);
 
                 HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
 
@@ -1183,12 +1166,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 urlConnection.disconnect();
-            }catch(Exception e){
+            } catch (Exception e) {
 
                 e.printStackTrace();
             }
 
-            Log.i("Increment Spot",result.toString());
+            Log.i("Increment Spot", result.toString());
 
             return null;
         }
@@ -1196,67 +1179,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
     /**
-     *
      * UI METHODS
-     *
      */
 
     public void setupUI() {
         UISetup = true;
-        final RelativeLayout player = (RelativeLayout) findViewById(R.id.player);
-        FrameLayout map = (FrameLayout) findViewById(R.id.mapLayout);
         Display display = getWindowManager().getDefaultDisplay();
         final Point point = new Point();
         display.getSize(point);
-        boolean hasBackKey = KeyCharacterMap.deviceHasKey(KeyEvent.KEYCODE_BACK);
-        boolean hasHomeKey = KeyCharacterMap.deviceHasKey(KeyEvent.KEYCODE_HOME);
-
-        final float height = point.y;
-        final float width = point.x;
         //bottomBar and animation
-        TextView text = (TextView) findViewById(R.id.infoBG);
-        if (!(hasBackKey && hasHomeKey))
-            setScaledHeight(text, width, height, 21, 128);
-        else
-            setScaledHeight(text, width, height, 117, 640);
-        text = (TextView) findViewById(R.id.songText);
-        text.setSelected(true);
-        setScaledHeight(text, width, height, 43, 480);
-        text = (TextView) findViewById(R.id.artsitAlbumText);
-        text.setSelected(true);
-        setScaledHeight(text, width, height, 37, 640);
-        RelativeLayout controls = (RelativeLayout) findViewById(R.id.controlsLayout);
-        controls.getLayoutParams().height = (int) (height - player.getLayoutParams().height) - controls.getLayoutParams().height;
-        float buttonHeight = (height - controls.getY()) / 2;
-        setupButtons((int) buttonHeight / 2);
-        text = (TextView) findViewById(R.id.bottomBar);
-        if (!(hasBackKey && hasHomeKey))
-            setScaledHeight(text, width, height, 11, 128);
-        else
-            setScaledHeight(text, width, height, 67, 640);
-        (findViewById(R.id.bottom_bar_layout)).getLayoutParams().height = text.getLayoutParams().height;
-        RelativeLayout image = (RelativeLayout) findViewById(R.id.albumArt);
-        if (!(hasBackKey && hasHomeKey))
-            image.getLayoutParams().height = (int) (height * 7 / 16);
-        else
-            image.getLayoutParams().height = (int) (height * 73 / 160);
+        setupButtons();
+        TextView text = (TextView) findViewById(R.id.bottomBar);
 
-        final float bottomBarSize = text.getLayoutParams().height;
+        final float bottomBarSize = text.getHeight();
 
         final RelativeLayout contentMain = (RelativeLayout) findViewById(R.id.contentMain);
 
-        final float closedPlayerY = contentMain.getHeight() - bottomBarSize;
-        map.getLayoutParams().height = (int) closedPlayerY;
+        closedPlayerY = contentMain.getHeight() - bottomBarSize;
         player.setY(closedPlayerY);
         player.setX(0);
 
-        text.setOnTouchListener(new View.OnTouchListener() {
+        player.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
 
-                if (occupied != 0) {
+                if (playing != NO_SONG_PLAYING) {
 
-                    float currentY = event.getRawY();
+                    currentY = event.getRawY();
 
                     if (event.getAction() == MotionEvent.ACTION_DOWN && !slidePlayer) {
                         slidePlayer = true;
@@ -1268,54 +1217,56 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             player.setY(currentY);
                     } else if (event.getAction() == MotionEvent.ACTION_UP && slidePlayer) {
 
-                        float finalY = expanded ? closedPlayerY : 0;
-
-                        float beginY = finalY == 0 ? closedPlayerY : 0;
-
-                        float speed = getSpeedOfSwipe(touchTime, System.currentTimeMillis(), beginY, currentY, closedPlayerY);
-
-                        if (speed > 200) {
-                            speed = 200;
-                        }
-
-                        Log.i(TAG, "Speed is " + speed);
-
-                        ObjectAnimator animator = ObjectAnimator.ofFloat(player, "y", finalY);
-                        animator.setDuration((long) speed);
-                        animator.start();
-
-                        expanded = !expanded;
-
-                        animateButtonsOnExpand();
-
-                        if (!expanded && currentLatLng != null)
-                            googleMap.animateCamera(CameraUpdateFactory.newLatLng(currentLatLng));
+                        if (expanded)
+                            showPlayer(false);
+                        else
+                            showPlayer(true);
 
                         slidePlayer = false;
                     }
                 } else {
-
                     Snackbar.make(contentMain, "No Music Spot detected :(", Snackbar.LENGTH_SHORT).show();
                 }
                 return false;
             }
         });
-
         setupSeekBar();
-
-        player.setVisibility(View.VISIBLE);
-
+        player.setVisibility(View.VISIBLE);//UI DONE!!
     }
 
-    public void updateNotification() {
+    private void showPlayer(boolean show) {
+        float finalY = show ? 0 : closedPlayerY;
 
+        float beginY = finalY == 0 ? closedPlayerY : 0;
+
+        float speed = getSpeedOfSwipe(touchTime, System.currentTimeMillis(), beginY, currentY, closedPlayerY);
+
+        if (speed > 200) {
+            speed = 200;
+        }
+
+        ObjectAnimator animator = ObjectAnimator.ofFloat(player, "y", finalY);
+        animator.setDuration((long) speed);
+        animator.start();
+
+        expanded = !expanded;
+
+        animateButtonsOnExpand();
+    }
+
+    public void updateNotification(int state) {
+
+
+        MusicSpot current = musicSpots.get(playing);
+
+        if(current != null){
         notification = new NotificationCompat.Builder(context);
         notification.setSmallIcon(R.drawable.ic_headphones);
         notification.setAutoCancel(true);
 
-        notification.setContentTitle(currentSong[0]);
+        notification.setContentTitle(current.getSongName());
 
-        notification.setContentText(currentSong[1] + " - " + currentSong[2]);
+        notification.setContentText(current.getArtistName() + " - " + current.getAlbumName());
 
         Intent playPauseIntent = new Intent();
         playPauseIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
@@ -1333,19 +1284,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         PendingIntent launchPend = PendingIntent.getActivity(context, 003, launchAppIntent, 0);
 
 
-        int playOrPauseIcon = playing ? R.drawable.ic_pause : R.drawable.ic_play;
+        int playOrPauseIcon = state == PLAY ? R.drawable.ic_play : R.drawable.ic_pause;
 
-        String playOrPauseText = playOrPauseIcon == R.drawable.ic_pause ? "Pause" : "Play";
+        String playOrPauseText = state == PLAY ? "Play" : "Pause";
 
         notification.addAction(playOrPauseIcon, playOrPauseText, playPausePend);
         notification.addAction(R.drawable.ic_stop, "Stop", stopPend);
         notification.setContentIntent(launchPend);
 
         notMgr.notify(001, notification.build());
+        }
 
     }
 
-    public void setupButtons(int imageButtonHeight) {
+    public void setupButtons() {
 
         final FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -1366,21 +1318,66 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
 
-        ImageButton but = (ImageButton) findViewById(R.id.play_pause);
-        but.getLayoutParams().height = imageButtonHeight;
-        but.getLayoutParams().width = imageButtonHeight;
-        but = (ImageButton) findViewById(R.id.bar_play_pause);
-        but.getLayoutParams().height = imageButtonHeight;
-        but.getLayoutParams().width = imageButtonHeight;
+        ImageButton but = (ImageButton) findViewById(R.id.ffButton);
+        but.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    startSongTimeUpdate(FAST_FORWARD);
+                } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                    stopSongTimeUpdate();
+                }
 
-        but.setX(but.getX() - (imageButtonHeight / 2));
+                return false;
+            }
+        });
+
+        but = (ImageButton) findViewById(R.id.rwButton);
+        but.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    startSongTimeUpdate(REWIND);
+                } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                    stopSongTimeUpdate();
+                }
+
+                return false;
+            }
+        });
     }
 
-    public void setPlayOrPauseIcons(String state) {
+    private void startSongTimeUpdate(int update) {
+        final int change = update == FAST_FORWARD ? 5500 : -5500;
+        setPlayOrPauseIcons(PLAY);
+        stopSeek();
+        songTimeUpdater = new Handler();
+        songTimeCheck = new Runnable() {
+            @Override
+            public void run() {
+                musicPlayer.pause();
+                seekBar.setProgress(seekBar.getProgress() + change);
+                musicPlayer.seekToPosition(seekBar.getProgress());
+                musicPlayer.resume();
+                songTimeUpdater.postDelayed(songTimeCheck, 100);
+            }
+        };
+        songTimeCheck.run();
+    }
+
+    private void stopSongTimeUpdate() {
+        songTimeUpdater.removeCallbacks(songTimeCheck);
+        setPlayOrPauseIcons(PAUSE);
+        musicPlayer.seekToPosition(seekBar.getProgress());
+        startSeek(seekBar.getProgress());
+    }
+
+
+    public void setPlayOrPauseIcons(int state) {
         final ImageButton fab = (ImageButton) findViewById(R.id.play_pause);
         final ImageButton fab2 = (ImageButton) findViewById(R.id.bar_play_pause);
 
-        if (state.equals("play")) {
+        if (state == PLAY) {
             fab.setImageDrawable(getResources().getDrawable(R.drawable.ic_play));
             fab2.setImageDrawable(getResources().getDrawable(R.drawable.ic_play));
         } else {
@@ -1388,19 +1385,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             fab2.setImageDrawable(getResources().getDrawable(R.drawable.ic_pause));
         }
 
+        if (playing != NO_SONG_PLAYING)
+            updateNotification(state);
 
     }
 
     public void setupSeekBar() {
-
-        RelativeLayout text = (RelativeLayout) findViewById(R.id.controlsLayout);
-
-        float topOfView = text.getY();
-
+        RelativeLayout controls = (RelativeLayout) findViewById(R.id.controlsLayout);
+        locationPlay = (RelativeLayout)findViewById(R.id.locationPlayLayout);
+        radiusChooser = (RelativeLayout)findViewById(R.id.radiusChooserLayout);
+        radiusSeekBar = (DiscreteSeekBar)findViewById(R.id.radiusChooserSeekbar);
         seekBar = (DiscreteSeekBar) findViewById(R.id.musicSeekBar);
-
-        float seekBarHeight = seekBar.getHeight();
-        seekBar.setY(topOfView - (seekBarHeight));
+        seekBar.setY(controls.getY() - (seekBar.getHeight() / 2));
         seekBar.setOnProgressChangeListener(new DiscreteSeekBar.OnProgressChangeListener() {
             @Override
             public void onProgressChanged(DiscreteSeekBar seekBar, int value, boolean fromUser) {
@@ -1422,8 +1418,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 musicPlayer.pause();
                 musicPlayer.seekToPosition(stoppedTime);
                 musicPlayer.resume();
-                setPlayOrPauseIcons("pause");
-                updateNotification();
+                setPlayOrPauseIcons(PAUSE);
                 startSeek(stoppedTime);
 
 
@@ -1432,9 +1427,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    public void startSeek(final long initialSeekPosition) {
+    public void
+    startSeek(final long initialSeekPosition) {
         seekBar.setProgress((int) initialSeekPosition);
-        seekBar.setMax((int)musicSpots.get(occupied).getDurationInMils());
+        seekBar.setMax((int) musicSpots.get(occupied).getDurationInMils());
         seekBar.setVisibility(View.VISIBLE);
         seekUpdater = new android.os.Handler();
 
@@ -1445,14 +1441,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void run() {
                 //update progress
                 seekBar.setProgress((int) (initialSeekPosition + (System.currentTimeMillis() - startTime)));
-                if(seekBar.getProgress() >= seekBar.getMax()){
+                if (seekBar.getProgress() >= seekBar.getMax()) {
                     //song has finished playing
-                    playing = false;
-                    setPlayOrPauseIcons("play");
+                    setPlayOrPauseIcons(PLAY);
                     seekBar.setProgress(0);
                     musicPlayer.pause();
-                }else{
-                seekUpdater.postDelayed(secondCheck, 1000);
+                    paused = true;
+                } else {
+                    seekUpdater.postDelayed(secondCheck, 1000);
                 }
             }
         };
@@ -1470,7 +1466,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         ImageButton barButton = (ImageButton) findViewById(R.id.bar_play_pause);
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
 
-        float amountMoved = (float) (barButton.getLayoutParams().width * 1.5);
+        float amountMoved = (float) (barButton.getWidth() * 1.5);
         if (expanded) {
 
             ObjectAnimator moveRight = ObjectAnimator.ofFloat(barButton, "x", barButton.getX() + amountMoved);
@@ -1500,17 +1496,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    public void setScaledHeight(TextView text, float width, float height, double numerator, double denominator) {
-
-        text.getLayoutParams().height = (int) (height * numerator / denominator);
-
-    }
-
     public void setupDrawer() {
 
-         DrawerLayout drawerLayout = (DrawerLayout) findViewById(R.id.homeDrawerLayout);
+        drawerLayout = (DrawerLayout) findViewById(R.id.homeDrawerLayout);
 
-        drawerLayout.setScrimColor(getResources().getColor(android.R.color.transparent));
+        drawerLayout.setScrimColor(ContextCompat.getColor(context,android.R.color.transparent));
         toggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.open_drawer, R.string.close_drawer) {
 
             @Override
@@ -1526,8 +1516,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         };
 
-        drawerLayout.setDrawerListener(toggle);
-
+        drawerLayout.addDrawerListener(toggle);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         getSupportActionBar().setHomeButtonEnabled(true);
 
@@ -1535,101 +1524,91 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Point p = new Point();
         d.getSize(p);
 
-        final String[] drawerItems = {"Home","Your Spots", "Settings"};
+        final String[] drawerTitles = {
+                "History", //0
+                "Your Spots", //1
+                "Settings"}; //2
+        final int[] drawerIcons = {R.drawable.ic_account_box_grey600_36dp,
+                R.drawable.ic_pencil_grey600_36dp,
+                R.drawable.ic_fast_forward_grey600_36dp};
 
-        final ListView drawer = (ListView)findViewById(R.id.homeDrawer);
-        drawer.getLayoutParams().width = (int)(p.x * .80);
-        drawer.setAdapter(new ListAdapter() {
-            @Override
-            public boolean areAllItemsEnabled() {
-                return true;
-            }
-
-            @Override
-            public boolean isEnabled(int position) {
-                return true;
-            }
-
-            @Override
-            public void registerDataSetObserver(DataSetObserver observer) {
-
-            }
-
-            @Override
-            public void unregisterDataSetObserver(DataSetObserver observer) {
-
-            }
-
-            @Override
-            public int getCount() {
-                return 3;
-            }
-
-            @Override
-            public Object getItem(int position) {
-                return drawer.getChildAt(position);
-            }
-
-            @Override
-            public long getItemId(int position) {
-                return position;
-            }
-
-            @Override
-            public boolean hasStableIds() {
-                return true;
-            }
-
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView text = new TextView(context);
-                text.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-                text.setText(drawerItems[position]);
-                text.setPadding(20, 15, 15, 15);
-                text.setTextSize(8 * getResources().getDisplayMetrics().density);
-                return text;
-            }
-
-            @Override
-            public int getItemViewType(int position) {
-                return 0;
-            }
-
-            @Override
-            public int getViewTypeCount() {
-                return 1;
-            }
-
-            @Override
-            public boolean isEmpty() {
-                return false;
-            }
-        });
-        drawer.setOnItemClickListener(this);
+        LinearLayout drawer = (LinearLayout) findViewById(R.id.homeDrawer);
+        LayoutInflater inflater = LayoutInflater.from(context);
+        for(int i = 0;i<drawerIcons.length;i++){
+            View layoutview = inflater.inflate(R.layout.drawer_item,null);
+            layoutview.setId(i);
+            ((TextView)layoutview.findViewById(R.id.drawerItemText)).setText(drawerTitles[i]);
+            ((ImageView)layoutview.findViewById(R.id.drawerItemIcon)).setImageResource(drawerIcons[i]);
+            layoutview.setOnClickListener(new DrawerOnClickListener());
+            drawer.addView(layoutview);
+        }
     }
+
+    private class DrawerOnClickListener implements View.OnClickListener{
+
+        @Override
+        public void onClick(View v) {
+            switch(v.getId()){
+                case 1:
+                    File spotsFile = new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE), "saved.txt");
+                    if(spotsFile.exists()){
+                        drawerLayout.closeDrawer(Gravity.LEFT);
+                        Intent intent = new Intent(context,SpotOrganizer.class);
+                        HashMap<Integer,MusicSpot> savedSpots = getSpotsFromFile(spotsFile);
+                        intent.putExtra("location",currentCity);
+                        intent.putExtra("spots",savedSpots);
+                        context.startActivity(intent);
+
+                    }else{
+                        Snackbar.make(v,"You dont have any spots, yet :)",Snackbar.LENGTH_SHORT).show();
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private HashMap<Integer,MusicSpot> getSpotsFromFile(File f){
+        HashMap<Integer,MusicSpot> saved = new HashMap<>();
+        try {
+            Scanner s = new Scanner(f);
+
+            while(s.hasNextLine()){
+                MusicSpot m = new MusicSpot();
+                m.setId(Integer.parseInt(s.nextLine()));
+                m.setLatt(Double.parseDouble(s.nextLine()));
+                m.setLongi(Double.parseDouble(s.nextLine()));
+                m.setRadius(Double.parseDouble(s.nextLine()));
+                m.setDurationInMils(Long.parseLong(s.nextLine()));
+                m.setMessage(s.nextLine());
+                m.setSongName(s.nextLine());
+                m.setSongLink(s.nextLine());
+                m.setAlbumName(s.nextLine());
+                m.setArtistName(s.nextLine());
+                m.setArtLink(s.nextLine());
+                m.setTime(Long.parseLong(s.nextLine()));
+                saved.put(m.getId(),m);
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
+        return saved;
+    }
+
+
 
     public void showRadiusChooser() {
 
-        Display display = getWindowManager().getDefaultDisplay();
-        Point displaySize = new Point();
-        display.getSize(displaySize);
-
-        FrameLayout mapLayout = (FrameLayout) findViewById(R.id.mapLayout);
-        TextView bottomBar = (TextView) findViewById(R.id.bottomBar);
-        radiusSeekBar = new DiscreteSeekBar(context);
-        final int primaryColor = getResources().getColor(R.color.colorPrimary);
-        final int accentColor = getResources().getColor(R.color.colorAccent);
+        locationPlay.setVisibility(View.INVISIBLE);
+        radiusChooser.setVisibility(View.VISIBLE);
+        int startX =(int)(radiusChooser.getWidth() * .90);
+        int startY = radiusChooser.getTop() + radiusChooser.getHeight()/2;
+        int finalRadius = (int)(radiusChooser.getWidth()*1.5);
+        Animator anim = ViewAnimationUtils.createCircularReveal(radiusChooser,startX,startY,0,finalRadius);
+        anim.setDuration(800);
+        anim.start();
         int accentColorDark = getResources().getColor(R.color.colorAccentDark);
-        radiusSeekBar.setLayoutParams(new LinearLayout.LayoutParams(displaySize.x, bottomBar.getLayoutParams().height));
 
-        radiusSeekBar.setBackgroundColor(primaryColor);
-        radiusSeekBar.setTrackColor(accentColorDark);
-        radiusSeekBar.setScrubberColor(accentColor);
-        radiusSeekBar.setThumbColor(accentColor, accentColor);
-
-        radiusSeekBar.setMin(45);
-        radiusSeekBar.setMax(500);
-        radiusSeekBar.setProgress(45);
 
         currentCircle = new CircleOptions();
         currentCircle.center(googleMap.getCameraPosition().target);
@@ -1639,15 +1618,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         currentCircle.radius(45);
 
         googleMap.addCircle(currentCircle);
-
-
         radiusSeekBar.setOnProgressChangeListener(new DiscreteSeekBar.OnProgressChangeListener() {
             @Override
             public void onProgressChanged(DiscreteSeekBar seekBar, int value, boolean fromUser) {
                 currentCircle.center(googleMap.getCameraPosition().target);
                 currentCircle.radius(value);
-                googleMap.clear();
-                addCircles();
+                redrawCircles();
                 googleMap.addCircle(currentCircle);
 
             }
@@ -1662,50 +1638,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 currentCircle.center(googleMap.getCameraPosition().target);
                 currentCircle.radius(seekBar.getProgress());
 
-                googleMap.clear();
+                redrawCircles();
                 googleMap.addCircle(currentCircle);
-                addCircles();
-
-
             }
         });
-
-        mapLayout.addView(radiusSeekBar);
-        float initialY = radiusSeekBar.getY();
-        radiusSeekBar.setY(0 - radiusSeekBar.getLayoutParams().height);
-
-        ObjectAnimator anim = ObjectAnimator.ofFloat(radiusSeekBar, "y", initialY);
-        anim.setDuration(500);
-        anim.start();
-
         showCirclePreview();
     }
 
     public void hideRadiusChooser() {
-
-        ObjectAnimator anim = ObjectAnimator.ofFloat(radiusSeekBar, "y", -radiusSeekBar.getLayoutParams().height);
-        anim.setDuration(500);
-        anim.addListener(new Animator.AnimatorListener() {
-            @Override
-            public void onAnimationStart(Animator animation) {
-
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                getSong();
-            }
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-
-            }
-
-            @Override
-            public void onAnimationRepeat(Animator animation) {
-
-            }
-        });
+        radiusChooser.setVisibility(View.INVISIBLE);
+        locationPlay.setVisibility(View.VISIBLE);
+        int startX = (int)(locationPlay.getWidth()*.15);
+        int startY = locationPlay.getTop() + locationPlay.getHeight()/2;
+        int finalRadius = (int)(locationPlay.getWidth()*1.5);
+        Animator anim = ViewAnimationUtils.createCircularReveal(locationPlay,startX,startY,0,finalRadius);
+        anim.setDuration(800);
         anim.start();
         hideCirclePreview();
     }
@@ -1729,83 +1676,34 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     public void hideCirclePreview() {
-
         circleUpdater.removeCallbacks(circleCheck);
-
+        getSong();
     }
 
-    @Override
-    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        DrawerLayout layout = (DrawerLayout)findViewById(R.id.homeDrawerLayout);
-        if(position == 1){
-            if(new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE),"saved.txt").exists()) {
-                layout.closeDrawer(Gravity.LEFT);
-                Intent intent = new Intent(this, SpotOrganizer.class);
-                intent.putExtra("spots", getPersonalSpots());
-                intent.putExtra("location",currentCity);
-
-                startActivity(intent);
-            }
-
-        }
-    }
-
-    private HashMap<Integer,MusicSpot> getPersonalSpots(){
-        File spotsText = new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE),"saved.txt");
-        HashMap<Integer,MusicSpot> personal = new HashMap<>();
-        try {
-            Scanner s = new Scanner(spotsText);
-
-            while(s.hasNextLine()){
-                MusicSpot m = new MusicSpot();
-                m.setId(Integer.parseInt(s.nextLine()));
-                m.setLatt(Double.parseDouble(s.nextLine()));
-                m.setLongi(Double.parseDouble(s.nextLine()));
-                m.setRadius(Double.parseDouble(s.nextLine()));
-                m.setDurationInMils(Long.parseLong(s.nextLine()));
-                m.setMessage(s.nextLine());
-                m.setSongName(s.nextLine());
-                m.setSongLink(s.nextLine());
-                m.setAlbumName(s.nextLine());
-                m.setArtistName(s.nextLine());
-                m.setArtLink(s.nextLine());
-                personal.put(m.getId(),m);
-                Log.i("TEST",m.toString());
-            }
-
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-        return personal;
-    }
 
     /**
-     *
      * MUSIC PLAYER METHODS
-     *
      */
 
     public void playMusicSpot(MusicSpot m) {
 
-        if(playing){
+        if (playing != NO_SONG_PLAYING) {
             replaceSongWith(m);
-        }else {
-            playing  = true;
+        } else {
+            playing = m.getId();
             try {
                 musicPlayer.play(m.getSongLink());
-                setPlayOrPauseIcons("pause");
+                setPlayOrPauseIcons(PAUSE);
             } catch (Exception e) {
                 e.printStackTrace();
             }
             startSeek(0);
         }
-        updatePlayerUI();
-        updateNotification();
+        updatePlayerUI(m);
     }
 
     public void getSong() {
-        SpotCreator chooser = new SpotCreator();
-        chooser.show(getFragmentManager(), "Song Chooser");
+        new SpotCreator().show(getFragmentManager(), "Create a Spot");
     }
 
     public void stopMusic() {
@@ -1817,8 +1715,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             stopSeek();
             seekBar.setProgress(0);
         }
-        playing = false;
-        setPlayOrPauseIcons("play");
+        playing = NO_SONG_PLAYING;
+        setPlayOrPauseIcons(PLAY);
     }
 
     public void updateLocationUI(Location location) {
@@ -1845,44 +1743,38 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    public void updatePlayerUI() {
-
-        currentSong = new String[]{"Unknown", "Unknown", "Unknown"};
+    public void updatePlayerUI(MusicSpot m) {
 
         TextView songName = (TextView) findViewById(R.id.songText);
         TextView albumAndArtist = (TextView) findViewById(R.id.artsitAlbumText);
 
-        MusicSpot current = musicSpots.get(occupied);
 
-        String songTitle = current.getSongName();
+        String songTitle = m.getSongName();
         if (songTitle != null) {
             songName.setText(songTitle);
-            currentSong[0] = songTitle;
         }
 
-        String artist = current.getArtistName();
-        String album =  current.getAlbumName();
+        String artist = m.getArtistName();
+        String album = m.getAlbumName();
 
         if (artist != null) {
             albumAndArtist.setText(artist + " - ");
-            currentSong[1] = artist;
         }
 
         if (album != null) {
             albumAndArtist.setText(albumAndArtist.getText() + album);
-            currentSong[2] = album;
         }
 
-        new GetAlbumArtFromLink(current.getArtLink()).execute();
+        new GetAlbumArtFromLink(m.getArtLink()).execute();
 
     }
 
-    private class GetAlbumArtFromLink extends AsyncTask<Void,Void,Void>{
+    private class GetAlbumArtFromLink extends AsyncTask<Void, Void, Void> {
 
         String link;
         Bitmap art;
 
-        public GetAlbumArtFromLink(String link){
+        public GetAlbumArtFromLink(String link) {
             this.link = link;
         }
 
@@ -1891,7 +1783,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         protected Void doInBackground(Void... params) {
             try {
 
-                HttpURLConnection con = (HttpURLConnection)new URL(link).openConnection();
+                HttpURLConnection con = (HttpURLConnection) new URL(link).openConnection();
                 con.connect();
                 art = BitmapFactory.decodeStream(con.getInputStream());
             } catch (IOException e) {
@@ -1900,7 +1792,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return null;
         }
 
-        public void onPostExecute(Void result){
+        public void onPostExecute(Void result) {
 
             ImageView albumArt = (ImageView) findViewById(R.id.artImageView);
 
@@ -1930,7 +1822,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return Color.rgb((int) (red / totalPixels), (int) (green / totalPixels), (int) (blue / totalPixels));
     }
 
-    public MusicSpot getSpotFromCreator(SpotifyTrack song, String message){
+    public MusicSpot getSpotFromCreator(SpotifyTrack song, String message) {
         MusicSpot m = new MusicSpot(song.getName(), song.getUri(), currentCircle.getCenter().latitude,
                 currentCircle.getCenter().longitude);
         m.setMessage(message);
@@ -1939,6 +1831,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         m.setArtistName(song.getArtist());
         m.setArtLink(song.getArt());
         m.setDurationInMils(song.getDurationInMils());
+        m.setTime(System.currentTimeMillis() / 1000L);
         m.setId();
 
         return m;
@@ -1946,16 +1839,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     @Override
-    public void onRecieveSong(SpotifyTrack song,String message) {
+    public void onRecieveSong(SpotifyTrack song, String message) {
 
         //create new Music Spot from Spotify Track and current location
 
         MusicSpot m = getSpotFromCreator(song, message);
 
-        ids.add(m.getId());
         musicSpots.put(m.getId(), m);
-        circles.add(currentCircle);
-        addCircles();
+        redrawCircles();
 
         //monitor new spot
 
@@ -1968,17 +1859,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         saveMusicSpotOffline(m.toString());
     }
 
-    private void saveMusicSpotOffline(String spot){
+    private void saveMusicSpotOffline(String spot) {
         try {
-            File spotsFile = new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE),"saved.txt");
-            if(!spotsFile.exists()){
+            File spotsFile = new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE), "saved.txt");
+            if (!spotsFile.exists()) {
                 spotsFile.createNewFile();
-                Log.i(TAG,"spots file created");
+                Log.i(TAG, "spots file created");
             }
             PrintWriter out = new PrintWriter(new BufferedWriter(new FileWriter(spotsFile.getAbsoluteFile(), true)));
             out.println(spot);
             out.close();
-            Log.i(TAG,"saved to spot file");
+            Log.i(TAG, "saved to spot file");
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -1991,18 +1882,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         if (musicPlayer != null && occupied != 0) {
 
-            if(!playing) {
-                playing = true;
+            if (paused) {
+                paused = false;
                 musicPlayer.resume();
-                setPlayOrPauseIcons("pause");
+                setPlayOrPauseIcons(PAUSE);
                 startSeek(seekBar.getProgress());
+                Log.i(TAG, "Resuming Song");
             } else {
-                playing = false;
+                paused = true;
                 musicPlayer.pause();
-                setPlayOrPauseIcons("play");
+                setPlayOrPauseIcons(PLAY);
                 stopSeek();
+                Log.i(TAG, "Pausing Song");
             }
-            updateNotification();
         }
     }
 
@@ -2020,10 +1912,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     /**
-     *
      * MISC METHODS
-     *
-     *
      */
 
     public void onConfigurationChanged(Configuration newConfig) {
@@ -2047,20 +1936,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return true;
         } else if (item.getItemId() == R.id.maptype && googleMap != null) {
 
-            if(!expanded){
-            boolean mapNormal = googleMap.getMapType() == GoogleMap.MAP_TYPE_NORMAL;
-            if (mapNormal)
-                googleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
-            else
-                googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
-            }else{
+            if (!expanded) {
+                boolean mapNormal = googleMap.getMapType() == GoogleMap.MAP_TYPE_NORMAL;
+                if (mapNormal)
+                    googleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
+                else
+                    googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+            } else {
 
                 int vis = (findViewById(R.id.artImageView)).getVisibility();
-                        if(vis ==  View.VISIBLE){
-                            showMessage();
-                        }else{
-                            hideMessage();
-                        }
+                if (vis == View.VISIBLE) {
+                    showMessage();
+                } else {
+                    hideMessage();
+                }
 
             }
 
@@ -2087,27 +1976,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void showMessage() {
 
-        ImageView art = (ImageView)findViewById(R.id.artImageView);
-        TextView text = (TextView)findViewById(R.id.artText);
+        ImageView art = (ImageView) findViewById(R.id.artImageView);
+        TextView text = (TextView) findViewById(R.id.artText);
         MusicSpot currentSpot = musicSpots.get(occupied);
 
-            ColorDrawable color = (ColorDrawable)art.getBackground();
-            art.setVisibility(View.GONE);
-            text.setVisibility(View.VISIBLE);
-            text.setBackground(color);
-            text.setText("\n\n\"" + currentSpot.getMessage() + "\"\n\nVisitors: " + currentSpot.getVisits());
+        ColorDrawable color = (ColorDrawable) art.getBackground();
+        art.setVisibility(View.GONE);
+        text.setVisibility(View.VISIBLE);
+        text.setBackground(color);
+        text.setText("\n\n\"" + currentSpot.getMessage() + "\"\n\nVisits: " + (currentSpot.getVisits() + 1));
 
-        optionsMenu.findItem(R.id.maptype).setIcon(android.R.drawable.ic_menu_gallery);
+        optionsMenu.findItem(R.id.maptype).setIcon(R.drawable.ic_account_box_white_36dp);
 
     }
 
-    private void hideMessage(){
-        ImageView art = (ImageView)findViewById(R.id.artImageView);
-        TextView text = (TextView)findViewById(R.id.artText);
+    private void hideMessage() {
+        ImageView art = (ImageView) findViewById(R.id.artImageView);
+        TextView text = (TextView) findViewById(R.id.artText);
         text.setVisibility(View.GONE);
         art.setVisibility(View.VISIBLE);
 
-        optionsMenu.findItem(R.id.maptype).setIcon(R.drawable.ic_edit);
+        optionsMenu.findItem(R.id.maptype).setIcon(R.drawable.ic_book_open_page_variant_white_36dp);
     }
 
     private class LogWriter extends AsyncTask<Void, Void, Void> {

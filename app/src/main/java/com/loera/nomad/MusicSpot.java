@@ -24,6 +24,7 @@ public class MusicSpot implements Parcelable {
     private long durationInMils;
     private int id;
     private int visits;
+    private long time;
     private String message;
 
     public MusicSpot(String s1, String s2, double l,double l2){
@@ -63,6 +64,7 @@ public class MusicSpot implements Parcelable {
         longi = in.readByte() == 0x00 ? null : in.readDouble();
         id = in.readInt();
         visits = in.readInt();
+        time = in.readLong();
         message = in.readString();
     }
 
@@ -94,6 +96,7 @@ public class MusicSpot implements Parcelable {
         }
         dest.writeInt(id);
         dest.writeInt(visits);
+        dest.writeLong(time);
         dest.writeString(message);
     }
 
@@ -190,18 +193,39 @@ public class MusicSpot implements Parcelable {
     }
 
     public String toString(){
-        return "" + id + "\n" +
-                latt+ "\n" +
-                longi+ "\n" +
-                radius+ "\n" +
-                durationInMils+ "\n" +
-                message+ "\n" +
-                songName+ "\n" +
-                songLink+ "\n" +
-                albumName+ "\n" +
-                artistName+ "\n" +
-                artLink;
+        StringBuilder sb = new StringBuilder();
+        sb.append(id);
+        sb.append("\n");
+        sb.append(latt);
+        sb.append("\n");
+        sb.append(longi);
+        sb.append("\n");
+        sb.append(radius);
+        sb.append("\n");
+        sb.append(durationInMils);
+        sb.append("\n");
+        sb.append(message);
+        sb.append("\n");
+        sb.append(songName);
+        sb.append("\n");
+        sb.append(songLink);
+        sb.append("\n");
+        sb.append(albumName);
+        sb.append("\n");
+        sb.append(artistName);
+        sb.append("\n");
+        sb.append(artLink);
+        sb.append("\n");
+        sb.append(time);
+        return sb.toString();
     }
 
 
+    public long getTime() {
+        return time;
+    }
+
+    public void setTime(long time) {
+        this.time = time;
+    }
 }

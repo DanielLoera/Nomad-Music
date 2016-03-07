@@ -61,7 +61,7 @@ public class SpotOrganizer extends AppCompatActivity implements OnMapReadyCallba
         Intent intent = getIntent();
         screen = new Point();
 
-        spots = (HashMap) intent.getSerializableExtra("spots");
+        spots = (HashMap<Integer,MusicSpot>)(intent.getSerializableExtra("spots"));
         location = intent.getStringExtra("location");
         ids = new ArrayList<>();
         ids.addAll(spots.keySet());
@@ -134,7 +134,7 @@ public class SpotOrganizer extends AppCompatActivity implements OnMapReadyCallba
         spotInfoLayout.addView(spotInfo);
 
         final ImageButton deleteButton = new ImageButton(context);
-        deleteButton.setId(id);
+        deleteButton.setId(m.getId());
         deleteButton.setScaleType(ImageView.ScaleType.FIT_XY);
         deleteButton.setImageResource(R.drawable.ic_trash);
         deleteButton.setClickable(true);
@@ -142,7 +142,7 @@ public class SpotOrganizer extends AppCompatActivity implements OnMapReadyCallba
         deleteButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(final View v) {
-                final MusicSpot m = spots.get(ids.get(v.getId()));
+                final MusicSpot m = spots.get(deleteButton.getId());
                 AlertDialog.Builder dialog = new AlertDialog.Builder(context);
                 dialog.setTitle("Delete Music Spot");
                 dialog.setMessage("Are you sure you want to delete the spot:\n" +
@@ -170,15 +170,14 @@ public class SpotOrganizer extends AppCompatActivity implements OnMapReadyCallba
     }
 
     public void removeSpot(MusicSpot m) {
-       MainActivity.toRemove.add(m.getId());
-        spots.remove(m.getId());
-        ids.remove(new Integer(m.getId()));
-        if (ids.size() == 0) {
+        MainActivity.toRemove.add(m.getId());
+        if (ids.size() == 1) {
             onBackPressed();
         }else{
             googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(
                     spots.get(ids.get(0)).getLatlng(), 18.0f));
         }
+        ids.remove(new Integer(m.getId()));
     }
 
     private MarkerOptions getMarker(MusicSpot m) {

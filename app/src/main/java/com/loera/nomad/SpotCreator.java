@@ -1,38 +1,37 @@
  package com.loera.nomad;
 
  import android.app.Activity;
- import android.app.DialogFragment;
- import android.content.Context;
- import android.content.DialogInterface;
- import android.graphics.Bitmap;
- import android.graphics.BitmapFactory;
- import android.graphics.drawable.BitmapDrawable;
- import android.graphics.drawable.Drawable;
- import android.os.AsyncTask;
- import android.os.Bundle;
- import android.util.Log;
- import android.view.LayoutInflater;
- import android.view.View;
- import android.view.ViewGroup;
- import android.widget.Button;
- import android.widget.EditText;
- import android.widget.LinearLayout;
- import android.widget.RelativeLayout;
- import android.widget.ScrollView;
- import android.widget.SearchView;
- import android.widget.TextView;
+import android.app.DialogFragment;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.ScrollView;
+import android.widget.SearchView;
+import android.widget.TextView;
 
- import org.json.JSONArray;
- import org.json.JSONException;
- import org.json.JSONObject;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
- import java.io.BufferedInputStream;
- import java.io.BufferedReader;
- import java.io.IOException;
- import java.io.InputStream;
- import java.io.InputStreamReader;
- import java.net.HttpURLConnection;
- import java.net.URL;
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
  /**
  * Created by Daniel on 11/9/2015.
@@ -46,14 +45,15 @@ public class SpotCreator extends DialogFragment {
     Context context;
     boolean pressed;
     SongListener songListener;
-     int viewHeight;
-
      SpotifyTrack[] tracks;
      SpotifyTrack selectedStrack;
 
-    final String TAG = "Song Chooser";
 
-    public interface SongListener{
+    final String TAG = "Song Chooser";
+     private LayoutInflater inflater;
+     private LinearLayout layout;
+
+     public interface SongListener{
 
         void onRecieveSong(SpotifyTrack song,String message);
         void noSelectionMade();
@@ -63,7 +63,7 @@ public class SpotCreator extends DialogFragment {
 
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        getDialog().getWindow().setTitle("Choose A Song");
+        getDialog().getWindow().setTitle("Create a Spot");
         return inflater.inflate(R.layout.song_chooser_layout,container,false);
 
     }
@@ -152,9 +152,10 @@ public class SpotCreator extends DialogFragment {
 
         view = getView();
         context = getActivity();
+        inflater = LayoutInflater.from(context);
         density = getResources().getDisplayMetrics().density;
-
         SearchView search = (SearchView)view.findViewById(R.id.searchBox);
+        layout = (LinearLayout) view.findViewById(R.id.fileLayout);
         search.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
@@ -171,8 +172,6 @@ public class SpotCreator extends DialogFragment {
     }
 
     public void displayResults(JSONArray items){
-
-        final LinearLayout layout = (LinearLayout) view.findViewById(R.id.fileLayout);
         layout.removeAllViews();
         tracks = getTracksFromJSONArray(items);
 
@@ -182,24 +181,20 @@ public class SpotCreator extends DialogFragment {
             layout.addView(t);
         }
 
+
     }
 
      public View[] getTextViewsFromTracks(){
 
          View[] textViews = new View[tracks.length];
 
-         viewHeight = 300;
-
          for(int i = 0;i<textViews.length;i++){
              SpotifyTrack currentTrack = tracks[i];
-             TextView textView = new TextView(context);
-             textView.setVisibility(View.INVISIBLE);
-             textView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,viewHeight));
-             textView.setText(currentTrack.getName() + " - " + currentTrack.getArtist());
-             textView.setTextSize(5.5f * density);
-             textView.setPadding(10, 10, 10, 10);
-             textView.setId(i);
-             textView.setOnClickListener(new View.OnClickListener() {
+             View result = inflater.inflate(R.layout.spotify_search_result,layout,false);
+             result.setVisibility(View.INVISIBLE);
+             ((TextView)result.findViewById(R.id.resultInfo)).setText(currentTrack.getName() + " - " + currentTrack.getArtist());
+             result.setId(i);
+             result.setOnClickListener(new View.OnClickListener() {
                  @Override
                  public void onClick(View v) {
                      selectedStrack = tracks[v.getId()];
@@ -207,9 +202,9 @@ public class SpotCreator extends DialogFragment {
                  }
              });
 
-             new SetTextViewArt(currentTrack.getArt(),textView).execute();
+             new SetTextViewArt(currentTrack.getArt(),result).execute();
 
-             textViews[i] = textView;
+             textViews[i] = result;
 
          }
 
@@ -277,9 +272,9 @@ public class SpotCreator extends DialogFragment {
 
          String link;
          Bitmap art;
-         TextView view;
+         View view;
 
-         public SetTextViewArt(String link,TextView view){
+         public SetTextViewArt(String link,View view){
              this.link = link;
              this.view = view;
          }
@@ -301,11 +296,9 @@ public class SpotCreator extends DialogFragment {
          public void onPostExecute(Void result){
 
              if(!pressed) {
-                 Drawable d = new BitmapDrawable(getResources(), art);
-
-                 d.setBounds(0, 0, view.getHeight(), view.getHeight());
-                 view.setCompoundDrawables(d, null, null, null);
-                 view.setCompoundDrawablePadding(10);
+                 ImageView albumArt = (ImageView)view.findViewById(R.id.resultAlbumArt);
+                         albumArt.setImageBitmap(art);
+                 albumArt.getLayoutParams().width = view.getHeight();
                  view.setVisibility(View.VISIBLE);
              }
          }

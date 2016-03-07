@@ -50,7 +50,7 @@
 
     </FrameLayout>
 
-    <ListView
+    <LinearLayout
         android:layout_marginTop="?attr/actionBarSize"
         android:id="@+id/homeDrawer"
         android:layout_width="300dp"
