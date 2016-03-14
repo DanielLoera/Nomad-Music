@@ -164,7 +164,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private boolean spotifyLoggedIn = false;
     public String responseToken;
-    public static final String CLIENT_ID = "7f54406569184c16b37376116cb6307c";
+    public static final String CLIENT_ID = "";
     public static final String REDIRECT_URI = "http://dannyloera.com";
     PlayerState playerState;
 
@@ -180,6 +180,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private DrawerLayout drawerLayout;
     private RelativeLayout locationPlay;
     private RelativeLayout radiusChooser;
+    private Point screenDimens;
+    private int bottomBarSize;
+    private ImageView art;
+    private TextView artText;
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -195,6 +199,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(getResources().getColor(R.color.colorPrimaryDark));
         }
+            player = (PercentRelativeLayout) findViewById(R.id.player);
+            art = (ImageView)findViewById(R.id.albumArt);
+            artText = (TextView)findViewById(R.id.artText);
+
+            player.post(new Runnable() {
+                @Override
+                public void run() {
+                    setupUI();
+                }
+            });
 
         setupDrawer();
         readInstanceState(savedInstanceState);
@@ -247,6 +261,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
             toRemove.clear();
             redrawCircles();
+            if (!musicSpots.containsKey(playing)){
+                stopMusic();
+            }
         }
     }
 
@@ -266,16 +283,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         state.putSerializable("musicSpots", musicSpots);
         state.putInt("occupied", occupied);
-    }
-
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (player == null)
-            player = (PercentRelativeLayout) findViewById(R.id.player);
-        if (hasFocus && player.getVisibility() == View.INVISIBLE) {
-            setupUI();
-        }
-
     }
 
     private CircleOptions getCircle(MusicSpot m) {
@@ -796,8 +803,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             new IncrementVisitorCountOnSpot(id).execute();
             Log.i(TAG, "Entered Geofence id: " + occupied);
             if (spotifyLoggedIn) {
-                if(occupied != playing)
-                playMusicSpot(musicSpots.get(occupied));
+                if (occupied != playing)
+                    playMusicSpot(musicSpots.get(occupied));
             }
 
         }
@@ -1185,29 +1192,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void setupUI() {
         UISetup = true;
         Display display = getWindowManager().getDefaultDisplay();
-        final Point point = new Point();
-        display.getSize(point);
+        screenDimens = new Point();
+        display.getSize(screenDimens);
         //bottomBar and animation
         setupButtons();
-        TextView text = (TextView) findViewById(R.id.bottomBar);
+       TextView text = (TextView) findViewById(R.id.bottomBar);
 
-        final float bottomBarSize = text.getHeight();
+         bottomBarSize = text.getHeight();
 
         final RelativeLayout contentMain = (RelativeLayout) findViewById(R.id.contentMain);
 
         closedPlayerY = contentMain.getHeight() - bottomBarSize;
+        setupPlayer();
+        setupSeekBar();
+    }
+
+    private void setupPlayer(){
         player.setY(closedPlayerY);
         player.setX(0);
 
         player.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-
                 if (playing != NO_SONG_PLAYING) {
 
                     currentY = event.getRawY();
 
-                    if (event.getAction() == MotionEvent.ACTION_DOWN && !slidePlayer) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN && !slidePlayer) {
                         slidePlayer = true;
                         touchY = (int) event.getY();
                         touchTime = System.currentTimeMillis();
@@ -1225,13 +1236,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         slidePlayer = false;
                     }
                 } else {
-                    Snackbar.make(contentMain, "No Music Spot detected :(", Snackbar.LENGTH_SHORT).show();
+                    Snackbar.make(player, "No Music Spot detected :(", Snackbar.LENGTH_SHORT).show();
                 }
                 return false;
             }
         });
-        setupSeekBar();
-        player.setVisibility(View.VISIBLE);//UI DONE!!
     }
 
     private void showPlayer(boolean show) {
@@ -1259,40 +1268,40 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         MusicSpot current = musicSpots.get(playing);
 
-        if(current != null){
-        notification = new NotificationCompat.Builder(context);
-        notification.setSmallIcon(R.drawable.ic_headphones);
-        notification.setAutoCancel(true);
+        if (current != null) {
+            notification = new NotificationCompat.Builder(context);
+            notification.setSmallIcon(R.drawable.ic_headphones);
+            notification.setAutoCancel(true);
 
-        notification.setContentTitle(current.getSongName());
+            notification.setContentTitle(current.getSongName());
 
-        notification.setContentText(current.getArtistName() + " - " + current.getAlbumName());
+            notification.setContentText(current.getArtistName() + " - " + current.getAlbumName());
 
-        Intent playPauseIntent = new Intent();
-        playPauseIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
-        playPauseIntent.putExtra("button", "playOrPause");
-        PendingIntent playPausePend = PendingIntent.getBroadcast(context, 001, playPauseIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+            Intent playPauseIntent = new Intent();
+            playPauseIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
+            playPauseIntent.putExtra("button", "playOrPause");
+            PendingIntent playPausePend = PendingIntent.getBroadcast(context, 001, playPauseIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent stopIntent = new Intent();
-        stopIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
-        stopIntent.putExtra("button", "stop");
-        PendingIntent stopPend = PendingIntent.getBroadcast(context, 002, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+            Intent stopIntent = new Intent();
+            stopIntent.setAction("com.nomad.ACTION_NOTIFICATION_PRESS");
+            stopIntent.putExtra("button", "stop");
+            PendingIntent stopPend = PendingIntent.getBroadcast(context, 002, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
-        Intent launchAppIntent = new Intent(context, MainActivity.class);
-        launchAppIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent launchPend = PendingIntent.getActivity(context, 003, launchAppIntent, 0);
+            Intent launchAppIntent = new Intent(context, MainActivity.class);
+            launchAppIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent launchPend = PendingIntent.getActivity(context, 003, launchAppIntent, 0);
 
 
-        int playOrPauseIcon = state == PLAY ? R.drawable.ic_play : R.drawable.ic_pause;
+            int playOrPauseIcon = state == PLAY ? R.drawable.ic_play : R.drawable.ic_pause;
 
-        String playOrPauseText = state == PLAY ? "Play" : "Pause";
+            String playOrPauseText = state == PLAY ? "Play" : "Pause";
 
-        notification.addAction(playOrPauseIcon, playOrPauseText, playPausePend);
-        notification.addAction(R.drawable.ic_stop, "Stop", stopPend);
-        notification.setContentIntent(launchPend);
+            notification.addAction(playOrPauseIcon, playOrPauseText, playPausePend);
+            notification.addAction(R.drawable.ic_stop, "Stop", stopPend);
+            notification.setContentIntent(launchPend);
 
-        notMgr.notify(001, notification.build());
+            notMgr.notify(001, notification.build());
         }
 
     }
@@ -1392,9 +1401,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     public void setupSeekBar() {
         RelativeLayout controls = (RelativeLayout) findViewById(R.id.controlsLayout);
-        locationPlay = (RelativeLayout)findViewById(R.id.locationPlayLayout);
-        radiusChooser = (RelativeLayout)findViewById(R.id.radiusChooserLayout);
-        radiusSeekBar = (DiscreteSeekBar)findViewById(R.id.radiusChooserSeekbar);
+        locationPlay = (RelativeLayout) findViewById(R.id.locationPlayLayout);
+        radiusChooser = (RelativeLayout) findViewById(R.id.radiusChooserLayout);
+        radiusSeekBar = (DiscreteSeekBar) findViewById(R.id.radiusChooserSeekbar);
         seekBar = (DiscreteSeekBar) findViewById(R.id.musicSeekBar);
         seekBar.setY(controls.getY() - (seekBar.getHeight() / 2));
         seekBar.setOnProgressChangeListener(new DiscreteSeekBar.OnProgressChangeListener() {
@@ -1473,6 +1482,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             moveRight.setDuration(400);
             moveRight.start();
             fab.hide();
+            if(art.getVisibility() != View.VISIBLE)
             hideMessage();
 
         } else {
@@ -1500,7 +1510,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         drawerLayout = (DrawerLayout) findViewById(R.id.homeDrawerLayout);
 
-        drawerLayout.setScrimColor(ContextCompat.getColor(context,android.R.color.transparent));
+        drawerLayout.setScrimColor(ContextCompat.getColor(context, android.R.color.transparent));
         toggle = new ActionBarDrawerToggle(this, drawerLayout, R.string.open_drawer, R.string.close_drawer) {
 
             @Override
@@ -1534,46 +1544,73 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         LinearLayout drawer = (LinearLayout) findViewById(R.id.homeDrawer);
         LayoutInflater inflater = LayoutInflater.from(context);
-        for(int i = 0;i<drawerIcons.length;i++){
-            View layoutview = inflater.inflate(R.layout.drawer_item,null);
+        for (int i = 0; i < drawerIcons.length; i++) {
+            View layoutview = inflater.inflate(R.layout.drawer_item, null);
             layoutview.setId(i);
-            ((TextView)layoutview.findViewById(R.id.drawerItemText)).setText(drawerTitles[i]);
-            ((ImageView)layoutview.findViewById(R.id.drawerItemIcon)).setImageResource(drawerIcons[i]);
+            ((TextView) layoutview.findViewById(R.id.drawerItemText)).setText(drawerTitles[i]);
+            ((ImageView) layoutview.findViewById(R.id.drawerItemIcon)).setImageResource(drawerIcons[i]);
             layoutview.setOnClickListener(new DrawerOnClickListener());
             drawer.addView(layoutview);
         }
     }
 
-    private class DrawerOnClickListener implements View.OnClickListener{
-
+    private class DrawerOnClickListener implements View.OnClickListener {
         @Override
-        public void onClick(View v) {
-            switch(v.getId()){
-                case 1:
-                    File spotsFile = new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE), "saved.txt");
-                    if(spotsFile.exists()){
-                        drawerLayout.closeDrawer(Gravity.LEFT);
-                        Intent intent = new Intent(context,SpotOrganizer.class);
-                        HashMap<Integer,MusicSpot> savedSpots = getSpotsFromFile(spotsFile);
-                        intent.putExtra("location",currentCity);
-                        intent.putExtra("spots",savedSpots);
-                        context.startActivity(intent);
+        public void onClick(final View v) {
+            final int clickedID = v.getId();
+            ObjectAnimator animator = ObjectAnimator.ofFloat(player, "y", closedPlayerY);
+            animator.setDuration(200);
+            slidePlayer = false;
+            expanded = false;
+            animator.addListener(new Animator.AnimatorListener() {
+                @Override
+                public void onAnimationStart(Animator animation) {
 
-                    }else{
-                        Snackbar.make(v,"You dont have any spots, yet :)",Snackbar.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    switch (clickedID) {
+                        case 1:
+                            File spotsFile = new File(context.getExternalFilesDir(Context.ACTIVITY_SERVICE), "saved.txt");
+                            if (spotsFile.exists()) {
+                                drawerLayout.closeDrawer(Gravity.LEFT);
+                                Intent intent = new Intent(context, SpotOrganizer.class);
+                                HashMap<Integer, MusicSpot> savedSpots = getSpotsFromFile(spotsFile);
+                                intent.putExtra("location", currentCity);
+                                intent.putExtra("spots", savedSpots);
+                                context.startActivity(intent);
+
+                            } else {
+                                Snackbar.make(v, "You dont have any spots, yet :)", Snackbar.LENGTH_SHORT).show();
+                            }
+
+                            break;
                     }
+                }
 
-                    break;
-            }
+                @Override
+                public void onAnimationCancel(Animator animation) {
+
+                }
+
+                @Override
+                public void onAnimationRepeat(Animator animation) {
+
+                }
+            });
+            animator.start();
+
         }
+
     }
 
-    private HashMap<Integer,MusicSpot> getSpotsFromFile(File f){
-        HashMap<Integer,MusicSpot> saved = new HashMap<>();
+    private HashMap<Integer, MusicSpot> getSpotsFromFile(File f) {
+        HashMap<Integer, MusicSpot> saved = new HashMap<>();
         try {
             Scanner s = new Scanner(f);
 
-            while(s.hasNextLine()){
+            while (s.hasNextLine()) {
                 MusicSpot m = new MusicSpot();
                 m.setId(Integer.parseInt(s.nextLine()));
                 m.setLatt(Double.parseDouble(s.nextLine()));
@@ -1587,7 +1624,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 m.setArtistName(s.nextLine());
                 m.setArtLink(s.nextLine());
                 m.setTime(Long.parseLong(s.nextLine()));
-                saved.put(m.getId(),m);
+                saved.put(m.getId(), m);
             }
         } catch (FileNotFoundException e) {
             e.printStackTrace();
@@ -1596,15 +1633,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
 
-
     public void showRadiusChooser() {
 
         locationPlay.setVisibility(View.INVISIBLE);
         radiusChooser.setVisibility(View.VISIBLE);
-        int startX =(int)(radiusChooser.getWidth() * .90);
-        int startY = radiusChooser.getTop() + radiusChooser.getHeight()/2;
-        int finalRadius = (int)(radiusChooser.getWidth()*1.5);
-        Animator anim = ViewAnimationUtils.createCircularReveal(radiusChooser,startX,startY,0,finalRadius);
+        int startX = (int) (radiusChooser.getWidth() * .90);
+        int startY = radiusChooser.getTop() + radiusChooser.getHeight() / 2;
+        int finalRadius = (int) (radiusChooser.getWidth() * 1.5);
+        Animator anim = ViewAnimationUtils.createCircularReveal(radiusChooser, startX, startY, 0, finalRadius);
         anim.setDuration(800);
         anim.start();
         int accentColorDark = getResources().getColor(R.color.colorAccentDark);
@@ -1648,10 +1684,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void hideRadiusChooser() {
         radiusChooser.setVisibility(View.INVISIBLE);
         locationPlay.setVisibility(View.VISIBLE);
-        int startX = (int)(locationPlay.getWidth()*.15);
-        int startY = locationPlay.getTop() + locationPlay.getHeight()/2;
-        int finalRadius = (int)(locationPlay.getWidth()*1.5);
-        Animator anim = ViewAnimationUtils.createCircularReveal(locationPlay,startX,startY,0,finalRadius);
+        int startX = (int) (locationPlay.getWidth() * .15);
+        int startY = locationPlay.getTop() + locationPlay.getHeight() / 2;
+        int finalRadius = (int) (locationPlay.getWidth() * 1.5);
+        Animator anim = ViewAnimationUtils.createCircularReveal(locationPlay, startX, startY, 0, finalRadius);
         anim.setDuration(800);
         anim.start();
         hideCirclePreview();
@@ -1794,7 +1830,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         public void onPostExecute(Void result) {
 
-            ImageView albumArt = (ImageView) findViewById(R.id.artImageView);
+            ImageView albumArt = (ImageView) findViewById(R.id.albumArt);
 
             int color = getAverageColor(art);
             albumArt.setBackground(new ColorDrawable(color));
@@ -1944,7 +1980,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     googleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
             } else {
 
-                int vis = (findViewById(R.id.artImageView)).getVisibility();
+                int vis = (findViewById(R.id.albumArt)).getVisibility();
                 if (vis == View.VISIBLE) {
                     showMessage();
                 } else {
@@ -1975,28 +2011,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void showMessage() {
-
-        ImageView art = (ImageView) findViewById(R.id.artImageView);
-        TextView text = (TextView) findViewById(R.id.artText);
         MusicSpot currentSpot = musicSpots.get(occupied);
-
         ColorDrawable color = (ColorDrawable) art.getBackground();
-        art.setVisibility(View.GONE);
-        text.setVisibility(View.VISIBLE);
-        text.setBackground(color);
-        text.setText("\n\n\"" + currentSpot.getMessage() + "\"\n\nVisits: " + (currentSpot.getVisits() + 1));
+        art.setVisibility(View.INVISIBLE);
+        artText.setVisibility(View.VISIBLE);
+
+        getRandomCircleReveal(artText).start();
+        artText.setBackground(color);
+        artText.setText("\n\n\"" + currentSpot.getMessage() + "\"\n\nVisits: " + (currentSpot.getVisits() + 1));
 
         optionsMenu.findItem(R.id.maptype).setIcon(R.drawable.ic_account_box_white_36dp);
 
     }
 
     private void hideMessage() {
-        ImageView art = (ImageView) findViewById(R.id.artImageView);
-        TextView text = (TextView) findViewById(R.id.artText);
-        text.setVisibility(View.GONE);
+        artText.setVisibility(View.INVISIBLE);
         art.setVisibility(View.VISIBLE);
-
+        getRandomCircleReveal(art).start();
         optionsMenu.findItem(R.id.maptype).setIcon(R.drawable.ic_book_open_page_variant_white_36dp);
+    }
+
+    private Animator getRandomCircleReveal(View v){
+        int cx = (int)(Math.random() * v.getWidth());
+        int cy = (int)(Math.random() * v.getHeight());
+        float radius = v.getHeight() * 1.5f;
+        Animator anim = ViewAnimationUtils.createCircularReveal(v,cx,cy,0,radius);
+        anim.setDuration(500);
+        return anim;
     }
 
     private class LogWriter extends AsyncTask<Void, Void, Void> {

@@ -16,7 +16,7 @@
         android:theme="@style/AppTheme">
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAajXrxK8Q1pVOZsCN7e4CzWbpMTgqYZkk" />
+            android:value="" />
 
         <receiver
             android:name=".MainActivity$GeofenceReciever"

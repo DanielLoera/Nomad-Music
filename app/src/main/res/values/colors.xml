@@ -7,4 +7,5 @@
     <color name="colorAccent">#E91E63</color>
     <color name="colorAccentDark">#AD1457</color>
     <color name="colorGreenConfirm">#4CAF50</color>
+    <color name="defaultGray">#263238</color>
 </resources>

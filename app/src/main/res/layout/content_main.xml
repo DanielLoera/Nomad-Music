@@ -31,7 +31,6 @@
         android:layout_height="fill_parent"
         android:id="@+id/player"
         android:clickable="true"
-        android:visibility="invisible"
         >
 
         <RelativeLayout
@@ -123,21 +122,36 @@
         </RelativeLayout>
 
         <RelativeLayout
-            android:layout_width="fill_parent"
-            android:layout_height="280dp"
-            android:layout_below="@+id/bottom_bar_layout"
-            android:id="@+id/albumArt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/bottom_bar_layout"
             app:layout_heightPercent="55%"
+            android:id="@+id/artTextLayout"
+            android:background="@color/colorPrimary"
+            >
+
+        <io.codetail.widget.RevealFrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:id="@+id/albumArtFrame"
+
             >
             <ImageView
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:src="@color/material_blue_grey_950"
-                    android:id="@+id/artImageView"
+                    android:id="@+id/albumArt"
                 />
+        </io.codetail.widget.RevealFrameLayout>
 
+
+
+        <io.codetail.widget.RevealFrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:id="@+id/artTextFrame"
+            >
             <TextView
-                android:layout_below="@+id/artImageView"
+                android:layout_below="@+id/albumArtFrame"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:visibility="gone"
@@ -148,13 +162,15 @@
                 android:textAlignment="center"
                 android:textSize="20sp"
                 />
+        </io.codetail.widget.RevealFrameLayout>
 
         </RelativeLayout>
 
-<RelativeLayout
+
+        <RelativeLayout
     android:layout_width="match_parent"
     android:layout_height="30dp"
-    android:layout_below="@+id/albumArt"
+    android:layout_below="@+id/artTextLayout"
     android:id="@+id/infoLayout"
     app:layout_heightPercent="20%">
         <TextView
